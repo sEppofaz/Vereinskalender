@@ -9,6 +9,8 @@ Disallow: /verein/termine
 Disallow: /verein/mitglieder
 Disallow: /verein/passwort
 Disallow: /verein/einladung
+Disallow: /verein/upload
+Disallow: /verein/confirm-upload
 Crawl-delay: 10
 
 User-agent: *
