@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1c1c1e">
+<title>Vereinskalender</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#fff;--bg2:#f2f2f7;--bg3:#e5e5ea;
+  --text:#1c1c1e;--text2:#6c6c70;--text3:#aeaeb2;
+  --border:rgba(0,0,0,0.1);--border2:rgba(0,0,0,0.18);
+  --card:#fff;--hdr:#6D28D9;
+  --accent:#1a5276;
+  --tab:#6D28D9;--radius:12px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;
+  --text:#f2f2f7;--text2:#aeaeb2;--text3:#636366;
+  --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.2);
+  --card:#2c2c2e;--accent:#2e86c1;--hdr:#5B21B6;
+}}
+html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif}
+.app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Header ── */
+.hdr{background:var(--hdr);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;padding-top:max(10px,env(safe-area-inset-top))}
+.hdr-icon{width:38px;height:38px;flex-shrink:0}
+.hdr-text h1{font-size:17px;font-weight:700}
+.hdr-text p{font-size:12px;color:rgba(255,255,255,.55);margin-top:1px}
+.hdr-right{margin-left:auto}
+.refresh-btn{background:rgba(255,255,255,.15);border:none;color:#fff;width:34px;height:34px;border-radius:9px;font-size:19px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.refresh-btn:active{background:rgba(255,255,255,.3)}
+.refresh-btn.spin{animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Tabs ── */
+.tabs{display:flex;background:var(--bg);border-bottom:.5px solid var(--border);flex-shrink:0}
+.tab-btn{flex:1;padding:10px 4px;font-size:12px;font-weight:500;color:var(--text2);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:color .15s}
+.tab-btn.on{color:var(--tab);border-bottom-color:var(--tab)}
+
+/* ── Content ── */
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg2)}
+.screen{display:none;padding:14px 16px;max-width:720px;margin:0 auto}
+.screen.on{display:block}
+
+/* ── Filter Card ── */
+.filter-card{background:var(--card);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.filter-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:.5px solid var(--border);position:sticky;top:0;z-index:10;background:var(--card);border-radius:var(--radius) var(--radius) 0 0}
+.filter-title{font-size:11px;font-weight:700;color:var(--tab);text-transform:uppercase;letter-spacing:.6px}
+.reset-btn{font-size:13px;font-weight:600;color:#ff3b30;background:none;border:none;cursor:pointer;padding:3px 8px;border-radius:7px;transition:background .1s}
+.reset-btn:active{background:rgba(255,59,48,.1)}
+
+/* ── Collapsible sections ── */
+.f-section{border-bottom:.5px solid var(--border)}
+.f-section:last-child{border-bottom:none}
+.f-toggle{width:100%;background:none;border:none;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:var(--text);font-size:14px;font-weight:500;text-align:left}
+.f-name{display:flex;align-items:center;gap:8px}
+.f-badge{font-size:12px;font-weight:600;color:var(--tab)}
+.f-arrow{font-size:11px;color:var(--tab);transition:transform .2s}
+.f-arrow.open{transform:rotate(180deg)}
+.f-content{display:none;padding:0 14px 13px}
+.f-content.open{display:block}
+
+/* ── Chips ── */
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding-top:4px}
+.chip{border:1.5px solid var(--border2);border-radius:20px;padding:5px 13px;font-size:13px;cursor:pointer;background:var(--bg);color:var(--text2);user-select:none;transition:all .15s;white-space:nowrap}
+.chip:active{opacity:.7}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* ── Verein checkboxes ── */
+.v-list{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px}
+@media(min-width:600px){.v-list{grid-template-columns:1fr 1fr 1fr}}
+.v-check{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text2);cursor:pointer;padding:5px 0}
+.v-check input{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;flex-shrink:0}
+.v-check-star{margin-left:auto;font-size:13px;cursor:pointer;flex-shrink:0;line-height:1;background:none;border:none;padding:2px;border-radius:4px;transition:opacity .15s}
+.v-sel-row{grid-column:1/-1;display:flex;gap:8px;padding-bottom:8px;border-bottom:.5px solid var(--border);margin-bottom:2px}
+
+/* ── Event cards ── */
+.ev-list{display:flex;flex-direction:column;gap:8px}
+.ev-card{background:var(--card);border-radius:var(--radius);padding:12px 14px;border-left:4px solid #999;box-shadow:0 1px 3px rgba(0,0,0,.06);position:relative}
+.ev-date{font-size:12px;color:var(--text2);margin-bottom:2px}
+.ev-title{font-weight:600;font-size:15px;color:var(--text);line-height:1.3;padding-right:32px}
+.ev-ort{font-size:12px;color:var(--text3);margin-top:3px}
+.ev-badge{display:inline-block;font-size:11px;font-weight:600;border-radius:8px;padding:2px 7px;margin-top:5px}
+.ev-empty{text-align:center;padding:60px 20px;color:var(--text3)}
+.ev-cal{position:absolute;top:10px;right:10px;background:none;border:none;font-size:17px;cursor:pointer;padding:4px;border-radius:7px;line-height:1;opacity:.55;transition:opacity .15s}
+.ev-cal:active{opacity:1;background:var(--bg3)}
+.ev-empty p{font-size:32px;margin-bottom:8px}
+.ev-empty small{font-size:14px}
+
+/* ── Import ── */
+.upload-zone{border:2px dashed var(--border2);border-radius:var(--radius);padding:40px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--card);margin-bottom:12px}
+.upload-zone:active,.upload-zone.drag{border-color:var(--accent);background:rgba(26,82,118,.06)}
+.uz-icon{font-size:48px;margin-bottom:10px;display:block}
+.uz-title{font-size:16px;font-weight:600;color:var(--text);margin-bottom:4px}
+.uz-hint{font-size:13px;color:var(--text2)}
+.prog-wrap{display:none;margin:12px 0}
+.prog-bar{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.prog-inner{height:100%;background:var(--accent);width:0;transition:width .4s;border-radius:2px}
+.prog-lbl{font-size:13px;color:var(--text2);text-align:center;margin-top:8px}
+.imp-result{background:var(--card);border-radius:var(--radius);padding:14px;margin-top:12px;display:none;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.imp-result h3{font-size:15px;font-weight:600;margin-bottom:10px;color:var(--text)}
+.imp-row{padding:7px 0;border-bottom:.5px solid var(--border);font-size:13px;color:var(--text2);display:flex;justify-content:space-between;align-items:center}
+.imp-row:last-child{border-bottom:none}
+.imp-cnt{font-weight:700;color:var(--accent)}
+
+/* ── Password Gate ── */
+.pw-gate{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 24px;gap:16px}
+.pw-gate h2{font-size:18px;font-weight:700;color:var(--text)}
+.pw-gate input{width:100%;max-width:320px;padding:12px 16px;border:1.5px solid var(--border2);border-radius:12px;font-size:16px;background:var(--bg);color:var(--text);outline:none;text-align:center;letter-spacing:2px}
+.pw-gate button{width:100%;max-width:320px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer}
+.pw-gate button:active{opacity:.8}
+.pw-err{font-size:13px;color:#ff3b30;min-height:18px}
+
+/* ── Version label ── */
+.ver-lbl{font-size:11px;font-weight:600;color:rgba(255,255,255,.4);margin-right:4px;letter-spacing:.3px;align-self:center}
+
+/* ── Back-to-top button ── */
+.back-top{position:fixed;bottom:24px;right:16px;width:40px;height:40px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:20px;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;z-index:200;transition:opacity .2s}
+.back-top.vis{display:flex}
+.back-top:active{opacity:.7}
+
+/* ── Disclaimer ── */
+.disclaimer{font-size:11px;color:var(--text3);text-align:center;padding:6px 16px 20px;line-height:1.6}
+
+/* ── Help ── */
+.help-card{background:var(--card);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.help-card h3{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding:12px 16px 4px}
+.help-row{display:flex;gap:12px;align-items:flex-start;padding:10px 16px;border-bottom:.5px solid var(--border)}
+.help-row:last-child{border-bottom:none}
+.help-icon{font-size:20px;flex-shrink:0;width:26px;text-align:center;margin-top:1px}
+.help-row strong{display:block;font-size:14px;font-weight:600;color:var(--text);margin-bottom:2px}
+.help-row span{font-size:13px;color:var(--text2);line-height:1.4}
+.version{font-size:12px;color:var(--text3);text-align:center;padding:20px 0 8px}
+
+/* ── Search ── */
+.srch-wrap{padding:10px 14px 6px;position:relative}
+.srch-input{width:100%;padding:8px 12px 8px 34px;border:1.5px solid var(--border2);border-radius:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none;-webkit-appearance:none}
+.srch-input::placeholder{color:var(--text3)}
+.srch-icon-abs{position:absolute;left:24px;top:17px;font-size:15px;pointer-events:none;color:var(--text3)}
+.srch-dropdown{position:absolute;left:14px;right:14px;background:var(--card);border:1px solid var(--border2);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.18);z-index:100;max-height:220px;overflow-y:auto;display:none;top:calc(100% - 2px)}
+.srch-dropdown.open{display:block}
+.srch-item{padding:9px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text);border-bottom:.5px solid var(--border)}
+.srch-item:last-child{border-bottom:none}
+.srch-item:active,.srch-item:hover{background:var(--bg2)}
+.srch-item-main{flex:1;min-width:0}
+.srch-item-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srch-item-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.srch-type{font-size:11px;color:var(--text3);flex-shrink:0;background:var(--bg2);border-radius:6px;padding:2px 6px}
+.srch-chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px}
+.srch-chip{display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:#fff;border-radius:16px;padding:4px 10px 4px 8px;font-size:12px;font-weight:500}
+.srch-chip-x{cursor:pointer;font-size:14px;line-height:1;opacity:.75;margin-left:2px}
+.srch-chip-x:active{opacity:1}
+
+/* ── Admin-Tabs ── */
+.adm-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:14px}
+.adm-tab{flex:1;padding:9px 4px;font-size:13px;font-weight:500;color:var(--text2);background:none;border:none;cursor:pointer;border-bottom:2.5px solid transparent;transition:color .15s}
+.adm-tab.on{color:var(--tab);border-bottom-color:var(--tab)}
+/* ── Alphabet-Bar ── */
+.alpha-bar{display:flex;flex-wrap:wrap;gap:2px;padding:8px 10px;background:var(--bg2);border-radius:10px;margin-bottom:12px}
+.alpha-btn{min-width:24px;height:26px;padding:0 3px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--tab);transition:background .12s}
+.alpha-btn:active{background:var(--tab);color:#fff}
+.alpha-btn.inactive{color:var(--text3);cursor:default;background:none;font-weight:400}
+.ver-section-hdr{font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.5px;padding:8px 2px 4px;text-transform:uppercase}
+.ver-del-btn{padding:4px 10px;border-radius:7px;border:1.5px solid #ff3b30;color:#ff3b30;background:none;font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0}
+
+/* ── Confirm-Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:flex-end;justify-content:center}
+.modal-sheet{background:var(--bg);border-radius:16px 16px 0 0;padding:20px 16px 32px;width:100%;max-width:600px;max-height:80vh;overflow-y:auto}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.modal-sub{font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.4}
+.ort-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:.5px solid var(--border)}
+.ort-row:last-of-type{border-bottom:none}
+.ort-name{font-size:14px;font-weight:500;color:var(--text)}
+.ort-btns{display:flex;gap:6px}
+.ort-btn{padding:5px 14px;border-radius:8px;border:1.5px solid var(--border2);font-size:12px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--text2);transition:all .15s}
+.ort-btn.wl{border-color:var(--accent);background:var(--accent);color:#fff}
+.ort-btn.bl{border-color:#ff3b30;background:#ff3b30;color:#fff}
+
+/* ── Ortschaften-Liste (Admin-Tab) ── */
+.ort-list-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:.5px solid var(--border);font-size:13px}
+.ort-list-row:last-child{border-bottom:none}
+.ort-list-name{color:var(--text);font-weight:500}
+.ort-list-actions{display:flex;gap:6px;flex-shrink:0}
+.ort-list-btn{padding:4px 10px;border-radius:7px;border:1.5px solid var(--border2);font-size:11px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--text2)}
+
+/* ── CTA-Karte ── */
+.cta-card{background:var(--card);border-radius:var(--radius);padding:14px 16px;border:1.5px dashed var(--border2);text-align:center;color:var(--text2);font-size:13px;line-height:1.6}
+.cta-card a{color:var(--accent);text-decoration:none;font-weight:600}
+.cta-card strong{color:var(--text);display:block;margin-bottom:4px;font-size:14px;font-weight:600}
+/* ── Rubrik-Tab-Leiste ── */
+.rubrik-bar{display:flex;gap:6px;padding:7px 14px 6px;border-bottom:.5px solid var(--border);flex-wrap:wrap}
+.rubrik-chip{padding:5px 13px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid var(--border2);background:var(--bg);color:var(--text2);transition:all .15s;white-space:nowrap}
+.rubrik-chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- Header -->
+<header class="hdr">
+  <svg class="hdr-icon" viewBox="0 0 38 38" fill="none">
+    <rect width="38" height="38" rx="9" fill="#1c1c1e"/>
+    <!-- Mondrian-Mosaik: Vielfalt des Vereinslebens -->
+    <rect x="4"  y="4"  width="19" height="11" rx="2.5" fill="#e74c3c"/>
+    <rect x="25" y="4"  width="9"  height="11" rx="2.5" fill="#f39c12"/>
+    <rect x="4"  y="17" width="13" height="8"  rx="2.5" fill="#27ae60"/>
+    <rect x="19" y="17" width="15" height="8"  rx="2.5" fill="#2980b9"/>
+    <rect x="4"  y="27" width="9"  height="7"  rx="2.5" fill="#9b59b6"/>
+    <rect x="15" y="27" width="19" height="7"  rx="2.5" fill="#1abc9c"/>
+  </svg>
+  <div class="hdr-text">
+    <h1>Vereinskalender / <strong>Veranstaltungen</strong></h1>
+    <p id="hdr-sub">Lade&#8230;</p>
+  </div>
+  <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+      <span class="ver-lbl" style="margin-right:0">v1.7</span>
+      <span style="font-size:9px;color:rgba(255,255,255,.28);letter-spacing:.2px;line-height:1">a sEpp-App</span>
+    </div>
+    <button class="refresh-btn" id="admin-import-btn" onclick="toggleImport()" title="Import" style="display:none">&#128229;</button>
+    <a class="refresh-btn" id="verein-admin-btn" href="/verein/dashboard" title="Mein Verein" style="display:none;text-decoration:none">&#9998;</a>
+  </div>
+</header>
+
+<!-- Content -->
+<div class="content">
+
+  <!-- ════ KALENDER ════ -->
+  <div id="s-kal" class="screen on">
+    <div class="filter-card">
+      <div class="filter-hdr" id="filter-hdr" onclick="toggleFilterCard()" style="cursor:pointer">
+        <span class="filter-title" style="display:flex;align-items:center;gap:6px">
+          Filter
+          <span id="fc-arrow" style="font-size:10px;color:var(--text3);transition:transform .2s;display:inline-block">&#9654;</span>
+        </span>
+        <button class="reset-btn" id="reset-btn" onclick="event.stopPropagation();resetAll()" style="display:none">&#10005; Zur&#252;cksetzen</button>
+      </div>
+      <!-- Suche: immer sichtbar -->
+      <div id="srch-section" style="border-bottom:.5px solid var(--border)">
+        <div class="srch-wrap">
+          <span class="srch-icon-abs">&#128269;</span>
+          <input class="srch-input" id="srch-input" type="search"
+                 placeholder="Verein oder Ort suchen&#8230;"
+                 oninput="onSearchInput(this.value)"
+                 onfocus="if(this.value.length>=2)document.getElementById('srch-dropdown').classList.add('open')"
+                 autocomplete="off" autocorrect="off" spellcheck="false">
+          <div class="srch-dropdown" id="srch-dropdown"></div>
+        </div>
+        <div class="srch-chips" id="srch-chips" style="display:none"></div>
+      </div>
+      <div id="fav-bar" style="display:none;flex-wrap:wrap;gap:6px;padding:8px 14px 6px;border-bottom:.5px solid var(--border)"></div>
+      <div id="rubrik-bar" class="rubrik-bar" style="display:none"></div>
+      <div id="filter-body" style="display:none">
+
+      <!-- Zeitraum -->
+      <div class="f-section">
+        <button class="f-toggle" onclick="toggleSection('zeit')">
+          <span class="f-name">Zeitraum <span class="f-badge" id="zeit-badge">K&#252;nftig</span></span>
+          <span class="f-arrow" id="zeit-arrow">&#9660;</span>
+        </button>
+        <div class="f-content" id="zeit-content">
+          <div class="chips">
+            <span class="chip on" data-z="zukunft">K&#252;nftig</span>
+            <span class="chip" data-z="30">30 Tage</span>
+            <span class="chip" data-z="90">3 Monate</span>
+            <span class="chip" data-z="365">1 Jahr</span>
+            <span class="chip" data-z="alle">Alle</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Landkreis/Region (dynamisch) -->
+      <div class="f-section" id="lk-section" style="display:none">
+        <button class="f-toggle" onclick="toggleSection('lk')">
+          <span class="f-name">Region <span class="f-badge" id="lk-badge">Alle</span></span>
+          <span class="f-arrow" id="lk-arrow">&#9660;</span>
+        </button>
+        <div class="f-content" id="lk-content">
+          <div class="chips" id="lk-chips"></div>
+        </div>
+      </div>
+
+      <!-- Ortschaft (dynamisch) -->
+      <div class="f-section" id="ort-section" style="display:none">
+        <button class="f-toggle" onclick="toggleSection('ort')">
+          <span class="f-name">Ortschaft <span class="f-badge" id="ort-badge">Alle</span></span>
+          <span class="f-arrow" id="ort-arrow">&#9660;</span>
+        </button>
+        <div class="f-content" id="ort-content">
+          <div class="chips" id="ort-chips"></div>
+        </div>
+      </div>
+
+      <!-- Verein -->
+      <div class="f-section">
+        <button class="f-toggle" onclick="toggleSection('ver')">
+          <span class="f-name">Verein <span class="f-badge" id="ver-badge">Alle</span></span>
+          <span class="f-arrow" id="ver-arrow">&#9660;</span>
+        </button>
+        <div class="f-content" id="ver-content">
+          <div class="chips" id="ver-chips" style="padding-bottom:10px;border-bottom:.5px solid var(--border);margin-bottom:4px"></div>
+          <div class="v-list" id="v-list"></div>
+        </div>
+      </div>
+
+      <!-- Hilfe – immer als letzte Section behalten -->
+      <div class="f-section" style="border-top:1.5px solid var(--border)">
+        <button class="f-toggle" onclick="toggleSection('hlp')">
+          <span class="f-name">&#8505; Info</span>
+          <span class="f-arrow" id="hlp-arrow">&#9660;</span>
+        </button>
+        <div class="f-content" id="hlp-content" style="padding-bottom:4px">
+          <div class="help-row" style="padding:8px 0 12px;border-bottom:1.5px solid var(--border);margin-bottom:4px">
+            <span class="help-icon">&#127974;</span>
+            <div><strong><a href="/verein/register" style="color:var(--accent);text-decoration:none">Euren Verein eintragen</a></strong><span>Termine selbst eintragen und verwalten &ndash; kostenlos, direkt, ohne Wartezeit. <a href="/verein/register" style="color:var(--accent);font-weight:600">Jetzt registrieren &rarr;</a><br><span style="color:var(--text3);font-size:.9em">Bereits registriert? <a href="/verein/login" style="color:var(--accent)">Zum Login &rarr;</a></span></span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0 12px;border-bottom:1.5px solid var(--border);margin-bottom:4px">
+            <span class="help-icon">&#128231;</span>
+            <div><strong>Eure Termine eintragen lassen</strong><span>Eure Termine sind noch nicht enthalten? Einfach das Jahresprogramm als PDF mit Angabe Eurer PLZ an <a href="mailto:Vereinskalender@icloud.com" style="color:var(--accent);text-decoration:none;font-weight:600">Vereinskalender@icloud.com</a> schicken &#8211; wir k&#252;mmern uns zeitnah um den Upload. Auch Termine aus Pfarreien/Pfarrbriefen k&#246;nnen hochgeladen werden.</span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0">
+            <span class="help-icon">&#128197;</span>
+            <div><strong>Kalender-Import</strong><span>Jeden Termin per &#128197;-Symbol direkt in den eigenen Kalender &#252;bernehmen &ndash; funktioniert mit iPhone, Android, Outlook und allen g&#228;ngigen Kalender-Apps.</span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0">
+            <span class="help-icon">&#8987;&#xFE0F;</span>
+            <div><strong>Apple Watch &amp; Kalender-Abo</strong><span>Termine automatisch im iPhone- und Apple&#8209;Watch-Kalender &ndash; aktualisiert sich alle 6&nbsp;Stunden. Auf dem iPhone &ouml;ffnen &rarr; in Einstellungen best&auml;tigen &rarr; fertig.<br><br>
+            <a href="webcal://vereinskalender.online/api/ical/feed" style="color:var(--accent);text-decoration:none;font-weight:600">&#127775; Alle Termine abonnieren</a><br>
+            <a href="#" onclick="openFavIcalFeed();return false;" style="color:var(--accent);text-decoration:none;font-weight:600">&#11088; Nur meine Favoriten abonnieren</a><br><br>
+            Funktioniert auch mit Google&nbsp;Kalender und Outlook.</span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0">
+            <span class="help-icon">&#128269;</span>
+            <div><strong>Suche</strong><span>Verein oder Ort direkt eintippen &ndash; Terminliste filtert live. Vorschlag antippen f&uuml;r Chip-Filter (favorisierbar). Suchfeld leeren um Filter-Optionen wieder anzuzeigen.</span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0">
+            <span class="help-icon">&#8987;</span>
+            <div><strong>Zeitraum</strong><span>Bestimmt den angezeigten Zeitraum: <strong>K&#252;nftig</strong> zeigt alle noch ausstehenden Termine ab heute. <strong>30 Tage / 3 Monate / 1 Jahr</strong> grenzt die Anzeige auf das jeweilige Zeitfenster ab heute ein. Mit <strong>Alle</strong> werden auch bereits vergangene Termine angezeigt &ndash; praktisch um nachzuschauen, was zuletzt stattgefunden hat.</span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0">
+            <span class="help-icon">&#128507;</span>
+            <div><strong>Region</strong><span>Erscheint wenn Vereine aus mehreren Landkreisen vorhanden sind &#8211; zeigt nur Vereine des gew&#228;hlten Landkreises.</span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0">
+            <span class="help-icon">&#127968;</span>
+            <div><strong>Ortschaft</strong><span>Erscheint wenn mehrere Vereine einer Ortschaft vorhanden sind. Mehrere Ortschaften k&#246;nnen gleichzeitig ausgew&#228;hlt werden.</span></div>
+          </div>
+          <div class="help-row" style="padding:8px 0;border-bottom:none">
+            <span class="help-icon">&#127974;</span>
+            <div><strong>Verein</strong><span>Einzelne Vereine gezielt ein- oder ausblenden.</span></div>
+          </div>
+          <div class="help-row" style="padding:12px 0 8px;border-top:1.5px solid var(--border);margin-top:4px;border-bottom:none">
+            <span class="help-icon">&#9878;</span>
+            <div><strong>Impressum</strong><span>Josef Fischer &middot; H&ouml;lskofen 13 &middot; 84092 Bayerbach b. Ergoldsbach<br><a href="mailto:Vereinskalender@icloud.com" style="color:var(--accent);text-decoration:none">Vereinskalender@icloud.com</a></span></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:8px 14px;text-align:center;border-top:.5px solid var(--border)">
+        <button onclick="toggleFilterCard()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:4px 16px;border-radius:8px">&#9650; einklappen</button>
+      </div>
+      </div><!-- filter-body -->
+    </div>
+
+    <p class="disclaimer" style="margin-bottom:10px">Alle Angaben ohne Gew&#228;hr. Ma&#223;geblich sind die offiziellen Ank&#252;ndigungen der jeweiligen Vereine.<br>&#9888;&#65039; <strong>Beta-Version</strong> &ndash; Diese Seite befindet sich noch im Aufbau. Es k&#246;nnen Fehler und unvollst&#228;ndige Daten auftreten.</p>
+
+    <div class="ev-list" id="ev-list">
+      <div class="ev-empty"><p>&#128197;</p><small>Lade Termine&#8230;</small></div>
+    </div>
+    <p class="version">Vereinskalender &middot; v1.7</p>
+  </div>
+
+  <!-- ════ IMPORT (nur Admin: vereinskalender.online#admin) ════ -->
+  <div id="s-imp" class="screen" style="display:none">
+    <!-- Passwort-Gate -->
+    <div id="pw-gate" class="pw-gate">
+      <h2>&#128274; Admin-Bereich</h2>
+      <form id="pw-form" onsubmit="checkPassword();return false" autocomplete="on">
+        <input type="text" name="username" autocomplete="username"
+               style="display:none" value="admin" aria-hidden="true">
+        <input type="password" id="pw-input" name="password" placeholder="Passwort"
+               autocomplete="current-password">
+        <div class="pw-err" id="pw-err"></div>
+        <button type="submit">&#214;ffnen</button>
+      </form>
+    </div>
+    <!-- Upload-Inhalt (nach Authentifizierung) -->
+    <div id="imp-content" style="display:none">
+    <div class="adm-tabs">
+      <button class="adm-tab on" id="admbtn-upload" onclick="switchAdmTab('upload')">&#128229; Import</button>
+      <button class="adm-tab" id="admbtn-ort" onclick="switchAdmTab('ort')">&#128205; Ortschaften</button>
+      <button class="adm-tab" id="admbtn-ver" onclick="switchAdmTab('ver')">&#127974; Vereine</button>
+      <button class="adm-tab" id="admbtn-acc" onclick="switchAdmTab('acc')">&#128101; Accounts</button>
+    </div>
+
+    <!-- Tab 1: Upload -->
+    <div id="adm-tab-upload">
+    <div class="filter-card" style="margin-bottom:12px">
+      <div class="f-toggle" style="cursor:default">
+        <span class="f-name">&#128205; Region (PLZ)</span>
+      </div>
+      <div style="padding:0 14px 13px">
+        <input type="text" id="upload-plz" maxlength="5" inputmode="numeric" pattern="\d{5}"
+               placeholder="z.&#8202;B. 84088"
+               style="width:100%;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:15px;background:var(--bg);color:var(--text);outline:none;letter-spacing:3px">
+        <div style="font-size:12px;color:var(--text3);margin-top:6px">PLZ des Vereins oder der Gemeinde &#8211; erm&#246;glicht den Regions-Filter in der App.</div>
+      </div>
+    </div>
+    <div class="upload-zone" id="drop-zone"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="handleDrop(event)">
+      <input type="file" id="file-in" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif" style="display:none" onchange="startUpload(this.files[0])">
+      <input type="file" id="cam-in" accept="image/*" capture="environment" style="display:none" onchange="startUpload(this.files[0])">
+      <span class="uz-icon" id="uz-icon">&#128196;</span>
+      <div class="uz-title">Kalender importieren</div>
+      <div class="uz-hint">PDF, Foto oder Scan (JPG, PNG, HEIC)</div>
+      <div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button onclick="event.stopPropagation();document.getElementById('file-in').click()" style="padding:8px 16px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;cursor:pointer">&#128194; Datei w&#228;hlen</button>
+        <button onclick="event.stopPropagation();document.getElementById('cam-in').click()" style="padding:8px 16px;border:1.5px solid var(--accent);border-radius:10px;background:var(--bg);color:var(--accent);font-size:14px;cursor:pointer">&#128247; Kamera</button>
+      </div>
+    </div>
+    <div class="prog-wrap" id="prog-wrap">
+      <div class="prog-bar"><div class="prog-inner" id="prog-inner"></div></div>
+      <div class="prog-lbl" id="prog-lbl">Verarbeite&#8230;</div>
+    </div>
+    <div class="imp-result" id="imp-result"></div>
+    <div class="help-card">
+      <div class="help-row">
+        <span class="help-icon">&#128161;</span>
+        <div><strong>Wie funktioniert der Import?</strong>
+          <span>PDF-Kalender hochladen &#8594; Claude liest alle Vereine und Termine automatisch &#8594; sofort im Kalender sichtbar.</span>
+        </div>
+      </div>
+      <div class="help-row">
+        <span class="help-icon">&#128203;</span>
+        <div><strong>Unterst&#252;tzte Formate</strong>
+          <span>PDF, Foto oder Scan (JPG, PNG, HEIC) – Jahresprogramme einzelner Vereine oder Veranstaltungskalender der Gemeinde. Direkt mit der Kamera fotografieren oder Datei ausw&#228;hlen.</span>
+        </div>
+      </div>
+    </div>
+    </div><!-- adm-tab-upload -->
+
+    <!-- Tab 3: Vereine -->
+    <div id="adm-tab-ver" style="display:none">
+      <div id="ver-tab-content">
+        <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128197; Lade&#8230;</div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Ortschaften -->
+    <div id="adm-tab-ort" style="display:none">
+      <div id="ort-tab-content">
+        <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128197; Lade&#8230;</div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Accounts -->
+    <div id="adm-tab-acc" style="display:none">
+    <div class="filter-card" style="margin-bottom:12px">
+      <div class="f-toggle" style="cursor:default"><span class="f-name">&#128101; Ausstehende Registrierungen</span></div>
+      <div id="acc-list" style="padding:0 14px 14px;font-size:14px;color:var(--text2)">Lade&hellip;</div>
+    </div>
+    </div>
+
+    </div><!-- imp-content -->
+  </div>
+
+
+</div><!-- content -->
+</div><!-- app -->
+
+<button class="back-top" id="back-top" onclick="document.querySelector('.content').scrollTo({top:0,behavior:'smooth'})">&#8679;</button>
+
+<script>
+const COLORS=["#e74c3c","#27ae60","#2980b9","#9b59b6","#f39c12","#1abc9c","#e67e22","#c0392b","#16a085","#8e44ad"];
+const WD=["So","Mo","Di","Mi","Do","Fr","Sa"];
+const MO=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+const ZEIT_LBL={"zukunft":"Künftig","30":"30 Tage","90":"3 Monate","365":"1 Jahr","alle":"Alle"};
+
+let allT=[],labels={},colors={},ortMap={},meta={},allOrteAll={},rubriken={};
+let zeitraum="zukunft",aktOrte=new Set(),aktVereine=new Set(),aktLandkreis=null,ready=false;
+let searchChips=[],srchResults=[];
+const secOpen={zeit:false,lk:false,ort:false,ver:false,hlp:false};
+const FAV_KEY="vk_favorites";
+let favorites=JSON.parse(localStorage.getItem(FAV_KEY)||"[]");
+let activeFavs=new Set(favorites.map(f=>f.type+":"+String(f.key)));
+const ADMIN=window.location.hash==="#admin";
+const RUBRIK_KEY="vk_rubrik";
+let aktRubrikSet=(()=>{try{const v=localStorage.getItem(RUBRIK_KEY);if(!v)return new Set();const p=JSON.parse(v);return new Set(Array.isArray(p)?p:(p&&p!=="alle"?[p]:[]));}catch(e){return new Set();}})();
+const STATE_KEY="vk_state";
+let srchText="",filterOpenBeforeSearch=false;
+
+function pd(s){const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d);}
+function fmt(s){const d=pd(s);return WD[d.getDay()]+", "+d.getDate()+". "+MO[d.getMonth()]+" "+d.getFullYear();}
+
+/* ── State-Persistenz ── */
+function saveState(){
+  if(!ready)return;
+  const deaktiviert=Object.keys(labels).filter(k=>!aktVereine.has(k));
+  try{
+    localStorage.setItem(STATE_KEY,JSON.stringify({
+      zeitraum,
+      aktOrte:[...aktOrte],
+      aktLandkreis,
+      deaktivierteVereine:deaktiviert
+    }));
+  }catch(e){}
+}
+
+function loadState(){
+  try{
+    const raw=localStorage.getItem(STATE_KEY);
+    if(!raw)return;
+    const s=JSON.parse(raw);
+    if(s.zeitraum&&ZEIT_LBL[s.zeitraum])zeitraum=s.zeitraum;
+    if(Array.isArray(s.aktOrte)){
+      const alleOrte=new Set([
+        ...Object.keys(allOrteAll),
+        ...allT.map(t=>t.ortschaft).filter(Boolean)
+      ]);
+      aktOrte=new Set(s.aktOrte.filter(o=>alleOrte.has(o)));
+    }
+    if(s.aktLandkreis){
+      const lks=new Set(Object.values(meta).map(m=>m.landkreis).filter(Boolean));
+      aktLandkreis=lks.has(s.aktLandkreis)?s.aktLandkreis:null;
+    }
+    if(Array.isArray(s.deaktivierteVereine)){
+      s.deaktivierteVereine.forEach(k=>{if(labels[k])aktVereine.delete(k);});
+    }
+  }catch(e){}
+}
+
+function applyStateToUI(){
+  document.querySelectorAll("[data-z]").forEach(c=>c.classList.toggle("on",c.dataset.z===zeitraum));
+  const alleOrtChip=document.querySelector('[data-o="alle"]');
+  if(alleOrtChip)alleOrtChip.classList.toggle("on",aktOrte.size===0);
+  document.querySelectorAll("[data-o]:not([data-o='alle'])").forEach(c=>c.classList.toggle("on",aktOrte.has(c.dataset.o)));
+  const alleLkChip=document.querySelector('[data-lk="alle"]');
+  if(alleLkChip)alleLkChip.classList.toggle("on",!aktLandkreis);
+  document.querySelectorAll("[data-lk]:not([data-lk='alle'])").forEach(c=>c.classList.toggle("on",c.dataset.lk===aktLandkreis));
+  updateChecks();
+}
+
+async function load(){
+  const j=await(await fetch("/api/termine")).json();
+  labels=j.labels||{};
+  allT=j.termine||[];
+  meta=j.meta||{};
+  rubriken=j.rubriken||{};
+  Object.keys(labels).sort().forEach((k,i)=>colors[k]=COLORS[i%COLORS.length]);
+
+  const tmp={};
+  Object.entries(labels).forEach(([k,l])=>{
+    const parts=l.trim().split(/\s+/);
+    const w=parts[parts.length-1].split("/")[0];
+    if(w.length>4){tmp[w]=tmp[w]||[];if(!tmp[w].includes(k))tmp[w].push(k);}
+  });
+  allOrteAll=tmp;
+  ortMap={};
+  Object.entries(tmp).forEach(([o,ks])=>{if(ks.length>=2)ortMap[o]=ks;});
+
+  buildLandkreisFilter();
+  buildOrtFilter();
+  buildVereinFilter();
+  aktVereine=new Set(Object.keys(labels));
+  loadState();
+  applyStateToUI();
+
+  renderFavBar();
+  renderRubrikBar();
+  document.getElementById("fav-bar").addEventListener("click",e=>{
+    const c=e.target.closest("[data-ftype]");
+    if(c)toggleFavChip(c.dataset.ftype,c.dataset.fkey);
+  });
+
+  ready=true;
+  render();
+
+  const h=new Date();h.setHours(0,0,0,0);
+  const nTermine=allT.filter(t=>pd(t.datum)>=h).length;
+  const nVereine=Object.keys(labels).length;
+  const nOrte=Object.keys(allOrteAll).length;
+  document.getElementById("hdr-sub").textContent=
+    nTermine+" Termine · "+nVereine+" Vereine · "+nOrte+" Ortschaften";
+  updateAllBadges();
+}
+
+/* ── Filter-Card Haupt-Toggle ── */
+let filterOpen=false;
+function toggleFilterCard(){
+  if(srchText.length>0)return;
+  filterOpen=!filterOpen;
+  document.getElementById("filter-body").style.display=filterOpen?"":"none";
+  const arr=document.getElementById("fc-arrow");
+  arr.style.transform=filterOpen?"rotate(90deg)":"";
+}
+
+/* ── Section toggle ── */
+function toggleSection(id){
+  secOpen[id]=!secOpen[id];
+  document.getElementById(id+"-content").classList.toggle("open",secOpen[id]);
+  document.getElementById(id+"-arrow").classList.toggle("open",secOpen[id]);
+}
+
+/* ── Landkreis filter ── */
+function buildLandkreisFilter(){
+  const section=document.getElementById("lk-section");
+  const container=document.getElementById("lk-chips");
+  const landkreise=[...new Set(Object.values(meta).map(m=>m.landkreis).filter(Boolean))].sort();
+  if(!landkreise.length){section.style.display="none";return;}
+  section.style.display="";
+  container.innerHTML='<span class="chip on" data-lk="alle">Alle</span><span class="chip" onclick="selectLandkreis(\'alle\')">Keine</span>';
+  landkreise.forEach(lk=>{
+    const c=document.createElement("span");
+    c.className="chip";c.dataset.lk=lk;c.textContent=lk;
+    c.onclick=()=>selectLandkreis(lk);
+    container.appendChild(c);
+  });
+  container.querySelector('[data-lk="alle"]').onclick=()=>selectLandkreis("alle");
+}
+
+function selectLandkreis(lk){
+  aktLandkreis=lk==="alle"?null:lk;
+  document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk===lk));
+  updateAllBadges();
+  render();
+}
+
+/* ── Badges & Reset-Button ── */
+function updateAllBadges(){
+  document.getElementById("zeit-badge").textContent=ZEIT_LBL[zeitraum]||zeitraum;
+  const lkBadge=document.getElementById("lk-badge");
+  if(lkBadge)lkBadge.textContent=aktLandkreis||"Alle";
+  document.getElementById("ort-badge").textContent=aktOrte.size===0?"Alle":aktOrte.size===1?[...aktOrte][0]:aktOrte.size+" Orte";
+  const tot=Object.keys(labels).length,act=aktVereine.size;
+  document.getElementById("ver-badge").textContent=act===tot?"Alle":act+"/"+tot;
+  const active=zeitraum!=="zukunft"||aktOrte.size>0||act!==tot||aktLandkreis!==null||searchChips.length>0||srchText.length>0||activeFavs.size>0||aktRubrikSet.size>0;
+  document.getElementById("reset-btn").style.display=active?"":"none";
+}
+
+/* ── Reset all filters ── */
+function resetAll(){
+  zeitraum="zukunft";
+  aktOrte=new Set();
+  aktLandkreis=null;
+  aktVereine=new Set(Object.keys(labels));
+  searchChips=[];
+  activeFavs=new Set();
+  aktRubrikSet=new Set();
+  localStorage.removeItem(RUBRIK_KEY);
+  renderRubrikBar();
+  srchResults=[];
+  srchText="";
+  filterOpenBeforeSearch=false;
+  if(filterOpen&&document.getElementById("filter-body").style.display==="none"){
+    document.getElementById("filter-body").style.display="";
+  }
+  document.getElementById("srch-input").value="";
+  document.getElementById("srch-dropdown").classList.remove("open");
+  renderSearchChips();
+  renderFavBar();
+  document.querySelectorAll("[data-z]").forEach(c=>c.classList.toggle("on",c.dataset.z==="zukunft"));
+  document.querySelectorAll("[data-o]").forEach(c=>c.classList.toggle("on",c.dataset.o==="alle"));
+  document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk==="alle"));
+  updateChecks();
+  updateAllBadges();
+  render();
+}
+
+/* ── Ort filter ── */
+// Wörter die keine Ortschaftsnamen sind (Gebäude, Anlagen, Abkürzungen)
+const ORT_EXCLUDE=/^(GH|FF|BRK|SC|FC|KP|EC|KLJB|KSK|und|Hof|Haus|Heim|Saal|Halle|Stube|Platz|Bahn|Grube|Allee|Gasse|Weg|Str|Straße)$/i;
+
+function _extractOrtschaft(ort){
+  if(!ort||!ort.trim()) return null;
+  const parts=ort.trim().split(/[\s,\/\-]+/).filter(w=>w.length>3&&!ORT_EXCLUDE.test(w));
+  return parts.length ? parts[parts.length-1] : null;
+}
+
+function buildOrtFilter(){
+  const section=document.getElementById("ort-section");
+  const container=document.getElementById("ort-chips");
+
+  // Ortschaften zählen: t.ortschaft (von Claude, admin-bestätigt) hat Vorrang;
+  // Fallback: _extractOrtschaft(t.ort) mit Mindest-Schwelle ≥ 2 Termine
+  const confirmedOrte=new Set();
+  const fallbackCount={};
+  allT.forEach(t=>{
+    if(t.ortschaft&&t.ortschaft.trim()){
+      confirmedOrte.add(t.ortschaft.trim());
+    } else {
+      const o=_extractOrtschaft(t.ort);
+      if(o)fallbackCount[o]=(fallbackCount[o]||0)+1;
+    }
+  });
+  const ortSet=new Set([...confirmedOrte,
+    ...Object.keys(fallbackCount).filter(o=>fallbackCount[o]>=2)]);
+
+  const orte=[...ortSet].sort((a,b)=>a.localeCompare(b,"de"));
+  if(!orte.length){section.style.display="none";return;}
+  section.style.display="";
+
+  container.innerHTML='<span class="chip on" data-o="alle">Alle</span><span class="chip" onclick="toggleOrt(\'alle\')">Keine</span>';
+  orte.forEach(o=>{
+    const c=document.createElement("span");
+    c.className="chip";c.dataset.o=o;c.textContent=o;
+    c.onclick=()=>toggleOrt(o);
+    container.appendChild(c);
+  });
+  container.querySelector('[data-o="alle"]').onclick=()=>toggleOrt("alle");
+}
+
+function toggleOrt(o){
+  if(o==="alle"){
+    aktOrte=new Set();
+  } else {
+    if(aktOrte.has(o))aktOrte.delete(o);else aktOrte.add(o);
+  }
+  const alleChip=document.querySelector('[data-o="alle"]');
+  if(alleChip)alleChip.classList.toggle("on",aktOrte.size===0);
+  document.querySelectorAll("[data-o]:not([data-o='alle'])").forEach(c=>{
+    c.classList.toggle("on",aktOrte.has(c.dataset.o));
+  });
+  // Ort-Filter ist jetzt direkt t.ort-basiert – aktVereine NICHT mehr verändern
+  updateAllBadges();
+  render();
+}
+
+/* ── Verein filter ── */
+function buildVereinFilter(){
+  const list=document.getElementById("v-list");
+  list.innerHTML="";
+
+  // Alle / Keine als plain Text-Links
+  const verChips=document.getElementById("ver-chips");
+  if(verChips){
+    verChips.innerHTML=
+      '<button id="ver-alle-chip" onclick="selectAllVereine(true)" style="font-size:13px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:2px 4px">Alle</button>'+
+      '<span style="color:var(--text3);margin:0 2px">|</span>'+
+      '<button id="ver-keine-chip" onclick="selectAllVereine(false)" style="font-size:13px;font-weight:600;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 4px">Keine</button>';
+  }
+
+  Object.entries(labels).sort((a,b)=>a[1].localeCompare(b[1],"de")).forEach(([k,l])=>{
+    const lbl=document.createElement("label");
+    lbl.className="v-check";
+    const cb=document.createElement("input");
+    cb.type="checkbox";cb.dataset.vk=k;cb.checked=true;
+    cb.onchange=()=>onCbChange(cb);
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(l));
+    // Favoriten-Stern
+    const isFav=favorites.some(f=>f.type==="verein"&&f.key===k);
+    const star=document.createElement("button");
+    star.className="v-check-star";
+    star.dataset.favk=k;
+    star.textContent=isFav?"⭐":"☆";
+    star.style.opacity=isFav?"1":"0.35";
+    star.title="Favorit";
+    star.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();toggleFavVerein(k,l);};
+    lbl.appendChild(star);
+    list.appendChild(lbl);
+  });
+}
+
+function selectAllVereine(all){
+  aktVereine=all?new Set(Object.keys(labels)):new Set();
+  aktOrte=new Set();
+  document.querySelectorAll("[data-o]").forEach(c=>c.classList.toggle("on",c.dataset.o==="alle"));
+  const ac=document.getElementById("ver-alle-chip");
+  const kc=document.getElementById("ver-keine-chip");
+  if(ac)ac.style.color=all?"var(--accent)":"var(--text3)";
+  if(kc)kc.style.color=all?"var(--text3)":"var(--accent)";
+  updateChecks();
+  updateAllBadges();
+  render();
+}
+
+function toggleFavVerein(k,l){
+  const r={type:"verein",key:k,label:l,icon:"&#127974;"};
+  const fi=favorites.findIndex(f=>f.type==="verein"&&f.key===k);
+  if(fi>=0){
+    favorites.splice(fi,1);
+    activeFavs.delete("verein:"+k);
+  } else {
+    favorites.push(r);
+    activeFavs.add("verein:"+k);
+  }
+  saveFavorites();
+  const isFav=favorites.some(f=>f.type==="verein"&&f.key===k);
+  document.querySelectorAll(`[data-favk="${k}"]`).forEach(s=>{s.textContent=isFav?"⭐":"☆";s.style.opacity=isFav?"1":"0.35";});
+  renderFavBar();
+  updateAllBadges();
+  render();
+}
+
+function renderRubrikBar(){
+  const bar=document.getElementById("rubrik-bar");
+  if(!bar)return;
+  const vorh=new Set(Object.values(rubriken));
+  if(vorh.size<=1){bar.style.display="none";return;}
+  const reihenfolge=["alle","Verein","Pfarrei","Kunst und Kultur"];
+  const extra=[...vorh].filter(r=>!reihenfolge.includes(r)).sort();
+  const tabs=["alle",...reihenfolge.slice(1).filter(r=>vorh.has(r)),...extra];
+  const icons={"alle":"&#127775; Alle","Verein":"&#127974; Vereine","Pfarrei":"&#9962; Pfarreien","Kunst und Kultur":"&#127914; Kunst &amp; Kultur"};
+  bar.style.display="flex";
+  const alleAn=aktRubrikSet.size===0;
+  bar.innerHTML=tabs.map(r=>{
+    const on=r==="alle"?alleAn:aktRubrikSet.has(r);
+    const lbl=icons[r]||(r);
+    return `<button class="rubrik-chip${on?" on":""}" onclick="setRubrik('${r}')">${lbl}</button>`;
+  }).join("");
+}
+
+function setRubrik(r){
+  if(r==="alle"){
+    aktRubrikSet.clear();
+  } else {
+    if(aktRubrikSet.has(r))aktRubrikSet.delete(r);
+    else aktRubrikSet.add(r);
+  }
+  if(aktRubrikSet.size===0)localStorage.removeItem(RUBRIK_KEY);
+  else localStorage.setItem(RUBRIK_KEY,JSON.stringify([...aktRubrikSet]));
+  renderRubrikBar();
+  updateAllBadges();
+  render();
+}
+
+function updateChecks(){
+  document.querySelectorAll("[data-vk]").forEach(cb=>{cb.checked=aktVereine.has(cb.dataset.vk);});
+}
+
+function onCbChange(cb){
+  if(cb.checked)aktVereine.add(cb.dataset.vk);
+  else aktVereine.delete(cb.dataset.vk);
+  aktOrte=new Set();
+  document.querySelectorAll("[data-o]").forEach(c=>c.classList.toggle("on",c.dataset.o==="alle"));
+  updateAllBadges();
+  render();
+}
+
+/* ── Zeitraum chips ── */
+document.querySelectorAll("[data-z]").forEach(c=>c.onclick=()=>{
+  zeitraum=c.dataset.z;
+  document.querySelectorAll("[data-z]").forEach(x=>x.classList.remove("on"));
+  c.classList.add("on");
+  updateAllBadges();
+  render();
+});
+
+/* ── Favoriten ── */
+function isFavorite(r){return favorites.some(f=>f.type===r.type&&String(f.key)===String(r.key));}
+function saveFavorites(){localStorage.setItem(FAV_KEY,JSON.stringify(favorites));}
+
+function renderFavBar(){
+  const el=document.getElementById("fav-bar");
+  if(!favorites.length){el.style.display="none";el.innerHTML="";return;}
+  el.style.display="flex";
+  el.innerHTML=favorites.map(f=>{
+    const id=f.type+":"+String(f.key);
+    const on=activeFavs.has(id);
+    const key=String(f.key).replace(/"/g,"&quot;");
+    return `<span class="chip${on?" on":""}" data-ftype="${f.type}" data-fkey="${key}">${f.icon||""} ${f.label}</span>`;
+  }).join("");
+}
+
+function toggleFavChip(type,key){
+  const id=type+":"+key;
+  if(activeFavs.has(id))activeFavs.delete(id);
+  else activeFavs.add(id);
+  renderFavBar();
+  updateAllBadges();
+  render();
+}
+function openFavIcalFeed(){
+  const favVereine=[...new Set(favorites.filter(f=>f.type==="verein").map(f=>f.key))];
+  const base="webcal://vereinskalender.online/api/ical/feed";
+  if(favVereine.length===0){alert("Noch keine Vereine als Favoriten gespeichert.\nBitte erst Vereine mit ⭐ markieren, dann erneut tippen.");return;}
+  window.location.href=base+"?v="+encodeURIComponent(favVereine.join(","));
+}
+
+function toggleFavorite(idx,ev){
+  ev.stopPropagation();
+  const r=srchResults[idx];
+  if(!r)return;
+  const fi=favorites.findIndex(f=>f.type===r.type&&String(f.key)===String(r.key));
+  if(fi>=0){
+    favorites.splice(fi,1);
+    activeFavs.delete(r.type+":"+String(r.key));
+  } else {
+    favorites.push(r);
+    activeFavs.add(r.type+":"+String(r.key));
+  }
+  saveFavorites();
+  renderFavBar();
+  updateAllBadges();
+  render();
+  onSearchInput(document.getElementById("srch-input").value);
+}
+
+/* ── Search ── */
+function onSearchInput(val){
+  const q=val.toLowerCase().trim();
+  srchText=q;
+  const dd=document.getElementById("srch-dropdown");
+  const fb=document.getElementById("filter-body");
+
+  if(q.length===0){
+    dd.classList.remove("open");
+    srchResults=[];
+    if(filterOpenBeforeSearch){
+      fb.style.display="";filterOpen=true;
+      document.getElementById("fc-arrow").style.transform="rotate(90deg)";
+    }
+    filterOpenBeforeSearch=false;
+    updateAllBadges();
+    render();
+    return;
+  }
+
+  // Filter-Body einklappen solange Suche aktiv
+  if(filterOpen&&fb.style.display!=="none"){
+    filterOpenBeforeSearch=true;
+    fb.style.display="none";
+  }
+
+  if(q.length<2){updateAllBadges();render();return;}
+
+  srchResults=[];
+
+  // Dropdown: nur Vereine + Ortschaften (keine Termine)
+  Object.entries(labels).forEach(([k,l])=>{
+    if(l.toLowerCase().includes(q)&&!searchChips.find(c=>c.type==="verein"&&c.key===k))
+      srchResults.push({type:"verein",key:k,label:l,icon:"&#127974;"});
+  });
+
+  Object.keys(allOrteAll).sort().forEach(ort=>{
+    if(ort.toLowerCase().includes(q)&&!searchChips.find(c=>c.type==="ort"&&c.key===ort))
+      srchResults.push({type:"ort",key:ort,label:ort,icon:"&#127968;"});
+  });
+
+  if(!srchResults.length){dd.classList.remove("open");updateAllBadges();render();return;}
+
+  const shown=srchResults.slice(0,8);
+  const typeLabel={verein:"Verein",ort:"Ort"};
+  dd.innerHTML=shown.map((r,i)=>{
+    const fav=isFavorite(r);
+    return `<div class="srch-item" onclick="addSearchChip(${i})">
+      <span>${r.icon}</span>
+      <div class="srch-item-main">
+        <div class="srch-item-name">${r.label}</div>
+      </div>
+      <span class="srch-type">${typeLabel[r.type]}</span>
+      <span onclick="toggleFavorite(${i},event)" style="font-size:17px;padding:2px 4px;cursor:pointer;opacity:${fav?1:.35}">${fav?"&#11088;":"&#9733;"}</span>
+    </div>`;
+  }).join("");
+  dd.classList.add("open");
+  updateAllBadges();
+  render();
+}
+
+function addSearchChip(idx){
+  const r=srchResults[idx];
+  if(!r)return;
+  if(!searchChips.find(c=>c.type===r.type&&String(c.key)===String(r.key))){
+    searchChips.push({...r});
+  }
+  document.getElementById("srch-input").value="";
+  document.getElementById("srch-dropdown").classList.remove("open");
+  srchResults=[];
+  renderSearchChips();
+  updateAllBadges();
+  render();
+}
+
+function removeSearchChip(idx){
+  searchChips.splice(idx,1);
+  renderSearchChips();
+  updateAllBadges();
+  render();
+}
+
+function renderSearchChips(){
+  const el=document.getElementById("srch-chips");
+  if(!searchChips.length){el.style.display="none";el.innerHTML="";return;}
+  el.style.display="flex";
+  el.innerHTML=searchChips.map((c,i)=>`<span class="srch-chip">${c.icon} ${c.label}<span class="srch-chip-x" onclick="removeSearchChip(${i})">&#10005;</span></span>`).join("");
+}
+
+/* ── Render events ── */
+function render(){
+  if(!ready)return;
+  const h=new Date();h.setHours(0,0,0,0);
+  let out=allT.filter(t=>{
+    const isFavActive=activeFavs.has("verein:"+t.verein);
+    if(!aktVereine.has(t.verein)&&!isFavActive)return false;
+    if(aktRubrikSet.size>0&&!isFavActive){const r=rubriken[t.verein]||"Verein";if(!aktRubrikSet.has(r))return false;}
+    if(aktLandkreis!==null){
+      const m=meta[t.verein];
+      if(!m||m.landkreis!==aktLandkreis)return false;
+    }
+    if(aktOrte.size>0){
+      const tOrt=(t.ortschaft&&t.ortschaft.trim())
+                 ?t.ortschaft.trim()
+                 :_extractOrtschaft(t.ort);
+      if(!tOrt||!aktOrte.has(tOrt))return false;
+    }
+    const d=pd(t.datum);
+    if(zeitraum==="zukunft"&&d<h)return false;
+    if(zeitraum!=="alle"&&zeitraum!=="zukunft"){
+      const b=new Date(h);b.setDate(b.getDate()+parseInt(zeitraum));
+      if(d<h||d>b)return false;
+    }
+    return true;
+  });
+
+  // Suchfilter: OR innerhalb gleichen Typs, AND zwischen Typen
+  if(searchChips.length>0){
+    const vChips=searchChips.filter(c=>c.type==="verein");
+    const oChips=searchChips.filter(c=>c.type==="ort");
+    const tChips=searchChips.filter(c=>c.type==="termin");
+    out=out.filter(t=>{
+      if(vChips.length>0&&!vChips.some(c=>t.verein===c.key))return false;
+      if(oChips.length>0&&!oChips.some(c=>(allOrteAll[c.key]||[]).includes(t.verein)))return false;
+      if(tChips.length>0){
+        const match=tChips.some(c=>{
+          const orig=allT[c.key];
+          return orig&&t.datum===orig.datum&&t.bezeichnung===orig.bezeichnung&&t.verein===orig.verein;
+        });
+        if(!match)return false;
+      }
+      return true;
+    });
+  }
+
+  // Favoriten-Quick-Filter
+  if(activeFavs.size>0){
+    out=out.filter(t=>favorites.some(f=>{
+      if(!activeFavs.has(f.type+":"+String(f.key)))return false;
+      if(f.type==="verein")return t.verein===f.key;
+      if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
+      return false;
+    }));
+  }
+
+  // Freitext-Filter (live, kein Chip nötig)
+  if(srchText.length>=2){
+    out=out.filter(t=>{
+      const bez=t.bezeichnung.toLowerCase();
+      const ort=(t.ort||"").toLowerCase();
+      const lbl=(labels[t.verein]||"").toLowerCase();
+      return bez.includes(srchText)||ort.includes(srchText)||lbl.includes(srchText);
+    });
+  }
+
+  out.sort((a,b)=>a.datum.localeCompare(b.datum)||(a.uhrzeit||"").localeCompare(b.uhrzeit||""));
+
+  const el=document.getElementById("ev-list");
+  if(!out.length){
+    let ctxMsg="Keine Termine gefunden.";
+    if(aktOrte.size===1)ctxMsg=`Keine Termine f&uuml;r <strong>${[...aktOrte][0]}</strong> gefunden.`;
+    else if(srchText.length>=2)ctxMsg=`Keine Treffer f&uuml;r &bdquo;${srchText}&ldquo;.`;
+    el.innerHTML=`<div class="ev-empty"><p>&#128197;</p><small>${ctxMsg}</small></div>`+
+      `<div class="cta-card" style="margin-top:12px"><strong>Termine fehlen?</strong>Jahresprogramm als PDF an <a href="mailto:Vereinskalender@icloud.com">Vereinskalender@icloud.com</a> &ndash; wir k&uuml;mmern uns zeitnah.</div>`;
+    return;
+  }
+  el.innerHTML=out.map(t=>{
+    const col=colors[t.verein]||"#777";
+    const uz=t.uhrzeit?` · ${t.uhrzeit} Uhr`:"";
+    const ort=t.ort?`<div class="ev-ort">&#128205; ${t.ort}</div>`:"";
+    const badge=`<span class="ev-badge" style="background:${col}22;color:${col}">${labels[t.verein]||t.verein}</span>`;
+    const idx=allT.indexOf(t);
+    const isFav=favorites.some(f=>f.type==="verein"&&f.key===t.verein);
+    return `<div class="ev-card" style="border-left-color:${col}">
+      <button class="ev-cal" onclick="exportICS(${idx})" title="Zum Kalender hinzufügen">&#128197;</button>
+      <button class="ev-fav" data-favk="${t.verein}" onclick="toggleFavVerein('${t.verein.replace(/'/g,"\\'")}','${(labels[t.verein]||t.verein).replace(/'/g,"\\'")}');this.textContent=favorites.some(f=>f.type==='verein'&&f.key==='${t.verein.replace(/'/g,"\\'")}')?' ⭐':'☆';this.style.opacity=favorites.some(f=>f.type==='verein'&&f.key==='${t.verein.replace(/'/g,"\\'")}')?' 1':'0.35'" title="Verein als Favorit" style="position:absolute;top:10px;right:50px;background:none;border:none;font-size:15px;cursor:pointer;padding:4px;border-radius:7px;line-height:1;opacity:${isFav?1:0.3};transition:opacity .15s">${isFav?"⭐":"☆"}</button>
+      <div class="ev-date">${fmt(t.datum)}${uz}</div>
+      <div class="ev-title" style="padding-right:74px">${t.bezeichnung}</div>
+      ${ort}${badge}
+    </div>`;
+  }).join("")+
+  `<div class="cta-card" style="margin-top:8px">Eure Termine gesehen? Falls Eurer fehlt &ndash; <a href="mailto:Vereinskalender@icloud.com">einfach schreiben</a>.</div>`;
+  saveState();
+}
+
+/* ── iCal Export ── */
+function exportICS(idx){
+  const t=allT[idx];
+  if(!t)return;
+  const p=new URLSearchParams({d:t.datum,t:t.bezeichnung,v:labels[t.verein]||t.verein});
+  if(t.uhrzeit)p.set("u",t.uhrzeit);
+  if(t.ort)p.set("o",t.ort);
+  window.location.href="/api/ical?"+p.toString();
+}
+
+/* ── Refresh ── */
+async function doRefresh(){
+  const btn=document.getElementById("refresh-btn");
+  btn.classList.add("spin");
+  ready=false;
+  try{await load();}finally{btn.classList.remove("spin");}
+}
+
+/* ── Admin-Modus (vereinskalender.online#admin) ── */
+if(ADMIN){
+  document.getElementById("admin-import-btn").style.display="";
+}
+
+/* ── Vereinsadmin-Stift-Icon ── */
+(async()=>{
+  try{
+    const me=await(await fetch("/api/auth/me")).json();
+    if(me.loggedin){
+      const btn=document.getElementById("verein-admin-btn");
+      if(btn)btn.style.display="";
+    }
+  }catch(e){}
+})();
+let importOpen=false;
+let adminAuth=!!sessionStorage.getItem("admin_auth");
+
+function toggleImport(){
+  importOpen=!importOpen;
+  document.getElementById("s-kal").classList.toggle("on",!importOpen);
+  const imp=document.getElementById("s-imp");
+  imp.classList.toggle("on",importOpen);
+  imp.style.display=importOpen?"block":"none";
+  document.getElementById("admin-import-btn").style.opacity=importOpen?"1":"0.6";
+  if(importOpen){
+    document.querySelector(".content").scrollTo({top:0,behavior:"instant"});
+    if(adminAuth){
+      document.getElementById("pw-gate").style.display="none";
+      document.getElementById("imp-content").style.display="";
+    } else {
+      document.getElementById("pw-gate").style.display="";
+      document.getElementById("imp-content").style.display="none";
+      setTimeout(()=>document.getElementById("pw-input").focus(),100);
+    }
+  }
+}
+
+async function checkPassword(){
+  const pw=document.getElementById("pw-input").value;
+  const err=document.getElementById("pw-err");
+  if(!pw){err.textContent="Bitte Passwort eingeben.";return;}
+  err.textContent="";
+  try{
+    const res=await fetch("/api/check-token",{
+      method:"POST",
+      headers:{"X-Upload-Token":pw}
+    });
+    if(res.ok){
+      adminAuth=true;
+      sessionStorage.setItem("admin_auth","1");
+      sessionStorage.setItem("ut",pw);
+      document.getElementById("pw-gate").style.display="none";
+      document.getElementById("imp-content").style.display="";
+    } else {
+      err.textContent="Falsches Passwort.";
+      document.getElementById("pw-input").select();
+    }
+  }catch(e){
+    err.textContent="Verbindungsfehler.";
+  }
+}
+
+/* ── Import ── */
+function handleDrop(ev){
+  ev.preventDefault();
+  document.getElementById("drop-zone").classList.remove("drag");
+  const f=ev.dataTransfer.files[0];
+  if(!f)return;
+  const n=f.name.toLowerCase();
+  const ok=[".pdf",".jpg",".jpeg",".png",".heic",".heif"].some(e=>n.endsWith(e));
+  if(ok)startUpload(f);
+}
+
+async function startUpload(file){
+  if(!file)return;
+  const zone=document.getElementById("drop-zone");
+  const prog=document.getElementById("prog-wrap");
+  const result=document.getElementById("imp-result");
+  const inner=document.getElementById("prog-inner");
+  const lbl=document.getElementById("prog-lbl");
+  const icon=document.getElementById("uz-icon");
+
+  zone.style.pointerEvents="none";
+  result.style.display="none";
+  prog.style.display="block";
+  icon.textContent="⏳";
+  inner.style.width="15%";
+  lbl.textContent="Datei wird hochgeladen…";
+
+  let pct=15;
+  const iv=setInterval(()=>{pct=Math.min(pct+1.5,82);inner.style.width=pct+"%";},800);
+  const isImg=/\.(jpe?g|png|heic|heif)$/i.test(file.name);
+  setTimeout(()=>{lbl.textContent=isImg?"Claude liest das Foto… (15–30 Sek.)":"Claude analysiert den Kalender… (30–60 Sek.)";},2000);
+
+  try{
+    const token=sessionStorage.getItem("ut")||"";
+    const plz=(document.getElementById("upload-plz").value||"").trim();
+    const fd=new FormData();
+    fd.append("file",file);
+    if(plz)fd.append("plz",plz);
+    const res=await fetch("/upload",{method:"POST",body:fd,headers:{"X-Upload-Token":token}});
+    clearInterval(iv);inner.style.width="100%";
+    const data=await res.json();
+    if(data.pending){
+      lbl.textContent=`📍 ${data.preview.termine_count} Termine erkannt – Ortschaften bestätigen`;
+      icon.textContent="📍";
+      showOrtschaftenConfirm(data);
+    }else if(data.error){
+      lbl.textContent="❌ Fehler: "+data.error;
+      icon.textContent="❌";
+    }else{
+      lbl.textContent=`✅ ${data.total} Termine aus ${data.vereine.length} Vereinen importiert`;
+      icon.textContent="✅";
+      result.style.display="";
+      result.innerHTML="<h3>Importierte Vereine</h3>"+
+        data.vereine.map(v=>`<div class="imp-row"><span>${v.name}</span><span class="imp-cnt">${v.count}</span></div>`).join("");
+      await doRefresh();
+    }
+  }catch(e){
+    clearInterval(iv);inner.style.width="100%";
+    lbl.textContent="❌ Verbindungsfehler";
+    icon.textContent="❌";
+  }
+  zone.style.pointerEvents="";
+}
+
+/* ── Dropdown schließen bei Klick außerhalb ── */
+document.addEventListener("click",e=>{
+  if(!e.target.closest("#srch-section"))
+    document.getElementById("srch-dropdown").classList.remove("open");
+});
+
+document.querySelector(".content").addEventListener("scroll",function(){
+  document.getElementById("back-top").classList.toggle("vis",this.scrollTop>300);
+});
+
+/* ── Admin-Tabs ── */
+function switchAdmTab(tab){
+  ["upload","ort","ver","acc"].forEach(t=>{
+    document.getElementById("adm-tab-"+t).style.display=t===tab?"":"none";
+    document.getElementById("admbtn-"+t).classList.toggle("on",t===tab);
+  });
+  if(tab==="ort")loadOrtschaften();
+  if(tab==="ver")loadVereine();
+  if(tab==="acc")loadPendingVereine();
+}
+
+async function loadPendingVereine(){
+  const el=document.getElementById("acc-list");
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const list=await(await fetch("/api/admin/vereine-pending",{headers:{"X-Upload-Token":token}})).json();
+    if(!list.length){el.innerHTML="<p style='color:var(--text3)'>Keine offenen Anfragen.</p>";return;}
+    el.innerHTML=list.map(v=>`
+      <div style="border:1.5px solid var(--border2);border-radius:10px;padding:10px 12px;margin:8px 0">
+        <div style="font-weight:600">${v.verein_name}</div>
+        <div style="color:var(--text3);font-size:12px">${v.email} &middot; ${v.created_at?.slice(0,10)||""}</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="approveVerein(${v.id},this)" style="flex:1;padding:7px;border-radius:8px;background:#34c759;color:#fff;border:none;font-weight:600;cursor:pointer">&#10003; Freigeben</button>
+          <button onclick="rejectVerein(${v.id},this)" style="flex:1;padding:7px;border-radius:8px;background:#ff3b30;color:#fff;border:none;font-weight:600;cursor:pointer">&#10005; Ablehnen</button>
+        </div>
+      </div>`).join("");
+  }catch(e){el.innerHTML="<div style='color:#ff3b30'>Fehler beim Laden</div>";}
+}
+
+async function approveVerein(id,btn){
+  if(!confirm("Verein wirklich freigeben?"))return;
+  const token=sessionStorage.getItem("ut")||"";
+  btn.disabled=true;
+  await fetch(`/api/admin/vereine/${id}/approve`,{method:"POST",headers:{"X-Upload-Token":token}});
+  loadPendingVereine();
+}
+async function rejectVerein(id,btn){
+  if(!confirm("Registrierung ablehnen?"))return;
+  const token=sessionStorage.getItem("ut")||"";
+  btn.disabled=true;
+  await fetch(`/api/admin/vereine/${id}/reject`,{method:"POST",headers:{"X-Upload-Token":token}});
+  loadPendingVereine();
+}
+
+/* ── Vereine-Tab (Admin) ── */
+const RUBRIKEN_OPT=["Verein","Pfarrei","Kunst und Kultur","Sonstiges"];
+
+async function loadVereine(){
+  const el=document.getElementById("ver-tab-content");
+  el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Lade&#8230;</div>';
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const d=await(await fetch("/api/vereine",{headers:{"X-Upload-Token":token}})).json();
+    renderVereine(d);
+  }catch(e){
+    el.innerHTML='<div style="color:#ff3b30;padding:12px">Fehler beim Laden</div>';
+  }
+}
+
+function renderVereine(list){
+  const el=document.getElementById("ver-tab-content");
+  if(!list||!list.length){el.innerHTML='<div style="color:var(--text3);padding:12px">Keine Vereine</div>';return;}
+
+  // Alphabetisch sortiert (API liefert bereits sortiert, aber sicher ist sicher)
+  list.sort((a,b)=>a.name.localeCompare(b.name,"de"));
+
+  // Buchstaben ermitteln
+  const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const used=new Set(list.map(v=>v.name[0].toUpperCase()));
+
+  const alphaBar=`<div class="alpha-bar">${alpha.map(l=>
+    `<button class="alpha-btn${used.has(l)?"":" inactive"}" onclick="${used.has(l)?`scrollToVereinLetter('${l}')`:""}">${l}</button>`
+  ).join("")}</div>`;
+
+  // Gruppieren nach Anfangsbuchstabe
+  const grouped={};
+  list.forEach(v=>{
+    const l=v.name[0].toUpperCase();
+    if(!grouped[l])grouped[l]=[];
+    grouped[l].push(v);
+  });
+
+  const rows=Object.keys(grouped).sort().map(l=>{
+    const items=grouped[l].map(v=>{
+      const opts=RUBRIKEN_OPT.map(r=>`<option value="${r}"${v.rubrik===r?" selected":""}>${r}</option>`).join("");
+      const nT=v.nTermine||0;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:.5px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}</div>
+          <div style="font-size:11px;color:var(--text3)">${nT} Termin${nT!==1?"e":""}</div>
+        </div>
+        <select data-vkey="${v.key}" onchange="updateVereinRubrik('${v.key}',this.value)"
+          style="padding:5px 6px;border:1.5px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;max-width:120px">
+          ${opts}
+        </select>
+        <button class="ver-del-btn" onclick="deleteVerein('${v.key.replace(/'/g,"\\'")}','${v.name.replace(/'/g,"\\'")}',${nT})">&#128465;</button>
+      </div>`;
+    }).join("");
+    return `<div class="ver-section-hdr" id="ver-letter-${l}">${l}</div><div class="filter-card" style="padding:0;margin-bottom:6px">${items}</div>`;
+  }).join("");
+
+  el.innerHTML=`
+    <div style="font-size:12px;color:var(--text3);padding:0 2px 10px">${list.length} Vereine – Rubrik festlegen, Löschen entfernt Verein + alle Termine.</div>
+    ${alphaBar}
+    ${rows}`;
+}
+
+function scrollToVereinLetter(l){
+  const el=document.getElementById("ver-letter-"+l);
+  if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+async function deleteVerein(key,name,nTermine){
+  const msg=nTermine>0
+    ?`"${name}" und ${nTermine} Termine löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.`
+    :`"${name}" löschen? (keine Termine vorhanden)\n\nDiese Aktion kann nicht rückgängig gemacht werden.`;
+  if(!confirm(msg))return;
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const r=await fetch(`/api/vereine/${encodeURIComponent(key)}`,{method:"DELETE",headers:{"X-Upload-Token":token}});
+    const d=await r.json();
+    if(d.ok){
+      // Lokale Daten sofort aktualisieren
+      delete labels[key];
+      delete rubriken[key];
+      renderRubrikBar();
+      render();
+      loadVereine();
+    } else {
+      alert("Fehler: "+(d.error||"unbekannt"));
+    }
+  }catch(e){alert("Netzwerkfehler: "+e);}
+}
+
+async function updateVereinRubrik(key,rubrik){
+  const token=sessionStorage.getItem("ut")||"";
+  await fetch("/api/vereine",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","X-Upload-Token":token},
+    body:JSON.stringify({key,rubrik}),
+  });
+  // rubriken-Map live aktualisieren → Rubrik-Bar und Filterung sofort korrekt
+  rubriken[key]=rubrik;
+  renderRubrikBar();
+  render();
+}
+
+/* ── Ortschaften-Tab ── */
+async function loadOrtschaften(){
+  const el=document.getElementById("ort-tab-content");
+  el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Lade&#8230;</div>';
+  try{
+    const d=await(await fetch("/api/ortschaften")).json();
+    renderOrtschaften(d);
+  }catch(e){
+    el.innerHTML='<div style="color:#ff3b30;padding:12px">Fehler beim Laden</div>';
+  }
+}
+
+function renderOrtschaften(d){
+  const el=document.getElementById("ort-tab-content");
+  const wl=(d.whitelist||[]).slice().sort((a,b)=>a.localeCompare(b,"de"));
+  const bl=(d.blacklist||[]).slice().sort((a,b)=>a.localeCompare(b,"de"));
+
+  const mkRow=(o,fromList)=>`
+    <div class="ort-list-row">
+      <span class="ort-list-name">${o}</span>
+      <div class="ort-list-actions">
+        ${fromList==="wl"
+          ?`<button class="ort-list-btn" onclick="updateOrtschaft('${o.replace(/'/g,"\\'")}','blacklist')" style="color:#ff3b30;border-color:#ff3b30">&rarr; Blacklist</button>`
+          :`<button class="ort-list-btn" onclick="updateOrtschaft('${o.replace(/'/g,"\\'")}','whitelist')" style="color:var(--accent);border-color:var(--accent)">&rarr; Whitelist</button>`}
+        <button class="ort-list-btn" onclick="updateOrtschaft('${o.replace(/'/g,"\\'")}','delete')" style="color:#ff3b30;border-color:#ff3b30">L&ouml;schen</button>
+      </div>
+    </div>`;
+
+  const empty='<div style="color:var(--text3);font-size:13px;padding:12px 0">Keine Eintr&auml;ge</div>';
+
+  el.innerHTML=`
+    <div class="adm-tabs" style="margin-bottom:12px">
+      <button class="adm-tab on" id="ortbtn-wl" onclick="switchOrtTab('wl')">&#10003; Whitelist (${wl.length})</button>
+      <button class="adm-tab" id="ortbtn-bl" onclick="switchOrtTab('bl')">&#128683; Blacklist (${bl.length})</button>
+    </div>
+    <div id="ort-wl-content" class="filter-card" style="padding:0 14px 10px">
+      ${wl.length?wl.map(o=>mkRow(o,"wl")).join(""):empty}
+    </div>
+    <div id="ort-bl-content" class="filter-card" style="padding:0 14px 10px;display:none">
+      ${bl.length?bl.map(o=>mkRow(o,"bl")).join(""):empty}
+    </div>`;
+}
+
+function switchOrtTab(tab){
+  ["wl","bl"].forEach(t=>{
+    document.getElementById("ort-"+t+"-content").style.display=t===tab?"":"none";
+    document.getElementById("ortbtn-"+t).classList.toggle("on",t===tab);
+  });
+}
+
+async function updateOrtschaft(name,action){
+  const token=sessionStorage.getItem("ut")||"";
+  const res=await fetch("/api/ortschaften",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","X-Upload-Token":token},
+    body:JSON.stringify({name,action}),
+  });
+  if(res.ok)loadOrtschaften();
+}
+
+/* ── Ortschaften-Bestätigungs-Modal ── */
+let _pendingId=null,_pendingOrtschaften=[],_pendingDecisions={};
+
+function showOrtschaftenConfirm(data){
+  _pendingId=data.import_id;
+  _pendingOrtschaften=data.pending_ortschaften;
+  _pendingDecisions={};
+  _pendingOrtschaften.forEach(o=>_pendingDecisions[o]="whitelist");
+
+  const modal=document.createElement("div");
+  modal.id="ort-confirm-modal";
+  modal.className="modal-overlay";
+  modal.innerHTML=`
+    <div class="modal-sheet">
+      <div class="modal-title">&#128205; Neue Ortschaften</div>
+      <div class="modal-sub">
+        ${_pendingOrtschaften.length} neue Ortschaft${_pendingOrtschaften.length>1?"en":""} erkannt &ndash; aufnehmen oder ablehnen?<br>
+        <small>${data.preview.termine_count} Termine &middot; ${data.preview.vereine.length} Verein${data.preview.vereine.length!==1?"e":""}</small>
+      </div>
+      ${_pendingOrtschaften.map((o,i)=>`
+        <div class="ort-row" id="ort-row-${i}">
+          <span class="ort-name">&#128205; ${o}</span>
+          <div class="ort-btns">
+            <button class="ort-btn wl" onclick="setOrtDecision(${i},'whitelist')">&#10003; Aufnehmen</button>
+            <button class="ort-btn" onclick="setOrtDecision(${i},'blacklist')">&#10005; Ablehnen</button>
+          </div>
+        </div>`).join("")}
+      <button id="ort-confirm-btn" onclick="doConfirmImport()" style="width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer">Best&auml;tigen &amp; Speichern</button>
+      <button onclick="document.getElementById('ort-confirm-modal').remove();document.getElementById('drop-zone').style.pointerEvents=''" style="width:100%;margin-top:8px;padding:11px;background:none;border:1.5px solid var(--border2);border-radius:12px;font-size:14px;color:var(--text2);cursor:pointer">Abbrechen</button>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function setOrtDecision(idx,decision){
+  _pendingDecisions[_pendingOrtschaften[idx]]=decision;
+  const row=document.getElementById("ort-row-"+idx);
+  const btns=row.querySelectorAll(".ort-btn");
+  btns[0].className="ort-btn"+(decision==="whitelist"?" wl":"");
+  btns[1].className="ort-btn"+(decision==="blacklist"?" bl":"");
+}
+
+async function doConfirmImport(){
+  const token=sessionStorage.getItem("ut")||"";
+  const confirm=Object.entries(_pendingDecisions).filter(([,v])=>v==="whitelist").map(([k])=>k);
+  const reject =Object.entries(_pendingDecisions).filter(([,v])=>v==="blacklist").map(([k])=>k);
+  const btn=document.getElementById("ort-confirm-btn");
+  btn.disabled=true;btn.textContent="Speichere…";
+  try{
+    const res=await fetch("/api/confirm-import",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Upload-Token":token},
+      body:JSON.stringify({import_id:_pendingId,confirm,reject}),
+    });
+    const d=await res.json();
+    document.getElementById("ort-confirm-modal").remove();
+    const lbl=document.getElementById("prog-lbl");
+    const icon=document.getElementById("uz-icon");
+    if(d.success){
+      lbl.textContent=`✅ ${d.total} Termine aus ${d.vereine.length} Vereinen importiert`;
+      icon.textContent="✅";
+      const result=document.getElementById("imp-result");
+      result.style.display="";
+      result.innerHTML="<h3>Importierte Vereine</h3>"+
+        d.vereine.map(v=>`<div class="imp-row"><span>${v.name}</span><span class="imp-cnt">${v.count}</span></div>`).join("");
+    }else{
+      lbl.textContent="❌ Fehler: "+(d.error||"Unbekannt");
+      icon.textContent="❌";
+    }
+  }catch(e){
+    document.getElementById("ort-confirm-modal")?.remove();
+    document.getElementById("prog-lbl").textContent="❌ Verbindungsfehler";
+    document.getElementById("uz-icon").textContent="❌";
+  }
+  try{await doRefresh();}catch(_){}
+  document.getElementById("drop-zone").style.pointerEvents="";
+}
+
+load();
+</script>
+</body>
+</html>

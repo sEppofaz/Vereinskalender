@@ -1,0 +1,37 @@
+# Python virtualenv
+bin/
+lib/
+lib64/
+include/
+pyvenv.cfg
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Laufzeitdaten (nicht in Git)
+vereinstermine.json
+vereinstermine.json.bak*
+vk_accounts.db
+kalender_input_cursor.txt
+cursor.txt
+invoice_cursor.txt
+last_import.json
+gottesdienste.json
+
+# Backups / alte Versionen
+*.bak
+*.bak-*
+*.old-*
+*.bak.*
+
+# Logs
+*.log
+
+# Symlink (zeigt auf lib/)
+lib64
+
+# Sensible Daten – NIEMALS in Git
+.env
+*.env

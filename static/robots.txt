@@ -1,0 +1,18 @@
+User-agent: *
+Disallow: /api/
+Disallow: /upload
+Disallow: /webhook
+Disallow: /webhook-invoice
+Disallow: /telegram
+Disallow: /verein/dashboard
+Disallow: /verein/termine
+Disallow: /verein/mitglieder
+Disallow: /verein/passwort
+Disallow: /verein/einladung
+Crawl-delay: 10
+
+User-agent: *
+Allow: /verein/register
+Allow: /verein/login
+Allow: /verein/datenschutz
+Allow: /verein/nutzungsbedingungen
