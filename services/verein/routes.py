@@ -1,18 +1,32 @@
+import html
+import io
 import json
 import os
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from pathlib import Path
 
-from flask import Blueprint, redirect, request
+from flask import Blueprint, make_response, redirect, request
 
 from shared.kalender_store import KalenderStore
-from shared.kalender_core import VEREINSTERMINE_FILE
-from shared.vk_db import db_conn, get_session_user, log_audit
+from shared.kalender_core import (
+    VEREINSTERMINE_FILE, _HEIC_SUPPORTED, _do_save_import,
+    import_pdf_bytes, parse_excel_bytes,
+)
+from shared.vk_db import (
+    db_conn, get_session_user, log_audit,
+    get_upload_count, increment_upload_quota,
+)
 from services.auth.routes import _CSS, _page, _session_token, require_verein_login
 
 verein_bp = Blueprint("verein", __name__)
 
 _BACK_DASH = '<a class="btn btn-sec" href="/verein/dashboard" style="margin-top:.75rem">← Zurück</a>'
+_UPLOAD_LIMIT = 3
+
+
+def _quota_remaining(verein_id: int) -> int:
+    return max(0, _UPLOAD_LIMIT - get_upload_count(verein_id, date.today().isoformat()))
 
 
 def _load_data() -> dict:
@@ -57,15 +71,25 @@ def dashboard(user):
         rows = '<p style="color:#aeaeb2">Noch keine Termine eingetragen.</p>'
 
     neu_btn = ""
-    if user["role"] == "admin":
-        neu_btn = '<a class="btn" href="/verein/termine/neu">+ Neuer Termin</a>'
-
+    upload_btn = ""
     mitglieder_link = ""
     if user["role"] == "admin":
+        neu_btn = '<a class="btn" href="/verein/termine/neu">+ Neuer Termin</a>'
+        remaining = _quota_remaining(user["verein_id"])
+        used = _UPLOAD_LIMIT - remaining
+        upload_btn = (
+            f'<a class="btn btn-sec" href="/verein/upload" style="margin-top:.5rem">'
+            f'📤 Terminplan hochladen ({used}/{_UPLOAD_LIMIT} heute)</a>'
+        )
         mitglieder_link = '<a class="btn btn-sec" href="/verein/mitglieder" style="margin-top:.5rem">👥 Mitglieder</a>'
 
+    upload_ok = request.args.get("upload_ok", "")
+    upload_banner = ""
+    if upload_ok and upload_ok.isdigit():
+        upload_banner = f'<p class="ok">✅ {upload_ok} Termine erfolgreich importiert.</p>'
+
     body = f"""
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+{upload_banner}<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
   <div>
     <div style="font-weight:600">{verein_name}</div>
     <div style="color:#aeaeb2;font-size:.85rem">{user['email']} · {user['role']}</div>
@@ -75,6 +99,7 @@ def dashboard(user):
   </form>
 </div>
 {neu_btn}
+{upload_btn}
 <h2 style="font-size:1rem;margin:1rem 0 .5rem">Termine ({len(termine)})</h2>
 {rows}
 {mitglieder_link}
@@ -395,6 +420,285 @@ def einladung():
   <button class="btn" type="submit">Einladung annehmen</button>
 </form>"""
     return _page("Einladung annehmen", form)
+
+
+# ── Upload-Template ──────────────────────────────────────────────────────────
+
+@verein_bp.route("/verein/upload-template")
+@require_verein_login
+def upload_template(user):
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Termine"
+
+    header_labels = ["Datum *", "Uhrzeit", "Bezeichnung *", "Ort", "Ortschaft"]
+    hfill = PatternFill("solid", fgColor="6D28D9")
+    hfont = Font(bold=True, color="FFFFFF")
+    for col, label in enumerate(header_labels, 1):
+        c = ws.cell(row=1, column=col, value=label)
+        c.fill = hfill
+        c.font = hfont
+        c.alignment = Alignment(horizontal="center")
+
+    for row_data in [
+        ("15.06.2026", "19:00", "Jahreshauptversammlung", "GH Zur Post, Hölskofen", "Hölskofen"),
+        ("22.06.2026", "",      "Sommerfest",             "Festplatz Postau",       "Postau"),
+    ]:
+        ws.append(row_data)
+
+    for col, w in zip("ABCDE", [14, 10, 35, 30, 18]):
+        ws.column_dimensions[col].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    resp.headers["Content-Disposition"] = "attachment; filename=terminplan-vorlage.xlsx"
+    return resp
+
+
+# ── Upload-Seite (GET) ────────────────────────────────────────────────────────
+
+@verein_bp.route("/verein/upload", methods=["GET"])
+@require_verein_login
+def upload_page(user):
+    if user["role"] != "admin":
+        return redirect("/verein/dashboard")
+
+    remaining = _quota_remaining(user["verein_id"])
+    used = _UPLOAD_LIMIT - remaining
+
+    if remaining == 0:
+        body = (
+            f'<p class="err">Tageslimit erreicht ({_UPLOAD_LIMIT}/{_UPLOAD_LIMIT} Uploads heute). '
+            f'Morgen wieder verfügbar.</p>{_BACK_DASH}'
+        )
+        return _page("Terminplan hochladen", body)
+
+    quota_bar = (
+        f'<p class="hint" style="margin-bottom:1rem">'
+        f'Uploads heute: {used}/{_UPLOAD_LIMIT}</p>'
+    )
+    body = f"""{quota_bar}
+<div class="card">
+  <h2 style="font-size:.95rem;margin-top:0">📄 PDF oder Foto</h2>
+  <p class="hint">Claude KI extrahiert die Termine automatisch aus dem Dokument.</p>
+  <form method="post" action="/verein/upload" enctype="multipart/form-data">
+    <input type="hidden" name="typ" value="vision">
+    <label>Datei (PDF, JPG, PNG, HEIC)</label>
+    <input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.heic,.heif">
+    <button class="btn" type="submit">Hochladen &amp; analysieren</button>
+  </form>
+</div>
+<div class="card">
+  <h2 style="font-size:.95rem;margin-top:0">📊 Excel-Tabelle</h2>
+  <p class="hint">Trage Termine in die Vorlage ein und lade sie hoch – ohne KI, keine Extraktion.</p>
+  <a class="btn btn-sec" href="/verein/upload-template"
+     style="margin-bottom:.75rem">⬇ Vorlage herunterladen (.xlsx)</a>
+  <form method="post" action="/verein/upload" enctype="multipart/form-data">
+    <input type="hidden" name="typ" value="excel">
+    <label>Ausgefüllte Excel-Datei (.xlsx)</label>
+    <input type="file" name="file" required accept=".xlsx">
+    <button class="btn" type="submit">Termine importieren</button>
+  </form>
+</div>
+{_BACK_DASH}"""
+    return _page(f"Terminplan hochladen – {user['verein_name']}", body)
+
+
+# ── Upload verarbeiten (POST) ─────────────────────────────────────────────────
+
+@verein_bp.route("/verein/upload", methods=["POST"])
+@require_verein_login
+def upload_process(user):
+    if user["role"] != "admin":
+        return redirect("/verein/dashboard")
+
+    verein_name = user["verein_name"]
+    verein_key  = user["verein_key"]
+    verein_id   = user["verein_id"]
+    heute       = date.today().isoformat()
+
+    if _quota_remaining(verein_id) <= 0:
+        body = (
+            f'<p class="err">Tageslimit erreicht ({_UPLOAD_LIMIT}/{_UPLOAD_LIMIT} Uploads heute).</p>'
+            + _BACK_DASH
+        )
+        return _page("Limit erreicht", body), 429
+
+    if "file" not in request.files:
+        return redirect("/verein/upload")
+
+    f      = request.files["file"]
+    fname  = (f.filename or "").lower()
+    suffix = Path(fname).suffix if fname else ""
+    typ    = request.form.get("typ", "vision")
+
+    # Quota jetzt erhöhen (vor dem Claude-Call, um Missbrauch zu verhindern)
+    increment_upload_quota(verein_id, heute)
+
+    auto_plz = ""
+    alle: list = []
+
+    if typ == "excel":
+        if suffix != ".xlsx":
+            body = '<p class="err">Nur .xlsx-Dateien erlaubt.</p>' + _BACK_DASH
+            return _page("Fehler", body), 400
+        try:
+            alle = parse_excel_bytes(f.read())
+        except Exception as ex:
+            body = f'<p class="err">Fehler beim Lesen der Excel-Datei: {html.escape(str(ex))}</p>' + _BACK_DASH
+            return _page("Fehler", body), 400
+    else:
+        allowed = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif"}
+        if suffix not in allowed:
+            body = '<p class="err">Nur PDF oder Bilder (JPG, PNG, HEIC) erlaubt.</p>' + _BACK_DASH
+            return _page("Fehler", body), 400
+        if suffix in {".heic", ".heif"} and not _HEIC_SUPPORTED:
+            body = '<p class="err">HEIC-Format auf diesem Server nicht verfügbar.</p>' + _BACK_DASH
+            return _page("Fehler", body), 400
+        try:
+            result   = import_pdf_bytes(f.read(), suffix)
+            alle     = result["alle"]
+            auto_plz = result.get("auto_plz", "")
+        except Exception as ex:
+            body = f'<p class="err">Fehler bei der KI-Analyse: {html.escape(str(ex))}</p>' + _BACK_DASH
+            return _page("Fehler", body), 500
+
+    if not alle:
+        body = '<p class="err">Keine Termine gefunden.</p>' + _BACK_DASH
+        return _page("Keine Termine", body)
+
+    # Alle Termine diesem Verein zuordnen
+    for t in alle:
+        t["verein"] = verein_name
+
+    try:
+        data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
+    except Exception:
+        data = {}
+
+    ort_cfg     = data.get("_ortschaften", {"whitelist": [], "blacklist": []})
+    known_white = set(ort_cfg.get("whitelist", []))
+    known_black = set(ort_cfg.get("blacklist", []))
+    neue_orts   = sorted({
+        t.get("ortschaft", "").strip()
+        for t in alle
+        if t.get("ortschaft", "").strip()
+           and t["ortschaft"].strip() not in known_white
+           and t["ortschaft"].strip() not in known_black
+    })
+
+    if neue_orts:
+        import_id = str(uuid.uuid4())
+        Path(f"/tmp/vk_pending_{import_id}.json").write_text(
+            json.dumps({
+                "import_id":   import_id,
+                "alle":        alle,
+                "auto_plz":    auto_plz,
+                "form_plz":    "",
+                "verein_id":   verein_id,
+                "verein_key":  verein_key,
+                "verein_name": verein_name,
+            }, ensure_ascii=False)
+        )
+
+        ort_items = ""
+        for o in neue_orts:
+            o_esc = html.escape(o)
+            ort_items += f"""
+<div class="card" style="padding:.75rem 1rem">
+  <div style="font-weight:500;margin-bottom:.4rem">{o_esc}</div>
+  <input type="hidden" name="alle_orts" value="{o_esc}">
+  <label style="display:flex;align-items:center;gap:.5rem;margin:0;font-size:.9rem">
+    <input type="checkbox" name="confirm" value="{o_esc}" checked>
+    In Ortsliste aufnehmen
+  </label>
+</div>"""
+
+        preview = sorted(alle, key=lambda x: x.get("datum", ""))
+        prev_rows = "".join(
+            f'<div style="font-size:.82rem;color:#aeaeb2;padding:.3rem 0;'
+            f'border-bottom:1px solid #3a3a3c">'
+            f'{html.escape(t.get("datum",""))} – {html.escape(t.get("bezeichnung",""))}'
+            + (f' · {html.escape(t.get("ortschaft",""))}' if t.get("ortschaft") else "")
+            + '</div>'
+            for t in preview[:10]
+        )
+        more = f'<p class="hint">… und {len(alle) - 10} weitere</p>' if len(alle) > 10 else ""
+
+        body = f"""
+<p class="hint">{len(alle)} Termine gefunden · {len(neue_orts)} neue Ortschaft(en) prüfen</p>
+<h2 style="font-size:.95rem;margin:1rem 0 .5rem">Neue Ortschaften</h2>
+<form method="post" action="/verein/confirm-upload">
+  <input type="hidden" name="import_id" value="{import_id}">
+  {ort_items}
+  <h2 style="font-size:.95rem;margin:1.25rem 0 .5rem">Vorschau (erste 10)</h2>
+  <div class="card">{prev_rows}{more}</div>
+  <button class="btn" type="submit" style="margin-top:1rem">Termine importieren</button>
+</form>
+{_BACK_DASH}"""
+        return _page("Ortschaften prüfen", body)
+
+    # Keine neuen Ortschaften – direkt speichern
+    _, total = _do_save_import(alle, auto_plz, "", data)
+    log_audit("upload", f"bulk_{total}", verein_key, user["id"])
+    return redirect(f"/verein/dashboard?upload_ok={total}")
+
+
+# ── Upload bestätigen (POST) ──────────────────────────────────────────────────
+
+@verein_bp.route("/verein/confirm-upload", methods=["POST"])
+@require_verein_login
+def confirm_upload(user):
+    if user["role"] != "admin":
+        return redirect("/verein/dashboard")
+
+    import_id    = request.form.get("import_id", "")
+    pending_path = Path(f"/tmp/vk_pending_{import_id}.json")
+
+    if not pending_path.exists():
+        body = (
+            '<p class="err">Import nicht gefunden oder abgelaufen. '
+            'Bitte Datei erneut hochladen.</p>' + _BACK_DASH
+        )
+        return _page("Fehler", body), 404
+
+    pending = json.loads(pending_path.read_text())
+
+    if pending.get("verein_id") != user["verein_id"]:
+        body = '<p class="err">Nicht autorisiert.</p>' + _BACK_DASH
+        return _page("Fehler", body), 403
+
+    alle_orts    = request.form.getlist("alle_orts")
+    confirm_list = request.form.getlist("confirm")
+    reject_list  = [o for o in alle_orts if o not in confirm_list]
+
+    try:
+        data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
+    except Exception:
+        data = {}
+
+    ort_cfg   = data.get("_ortschaften", {"whitelist": [], "blacklist": []})
+    whitelist = set(ort_cfg.get("whitelist", []))
+    blacklist = set(ort_cfg.get("blacklist", []))
+    for o in confirm_list:
+        whitelist.add(o); blacklist.discard(o)
+    for o in reject_list:
+        blacklist.add(o); whitelist.discard(o)
+    data["_ortschaften"] = {"whitelist": sorted(whitelist), "blacklist": sorted(blacklist)}
+
+    _, total = _do_save_import(pending["alle"], pending.get("auto_plz", ""), "", data)
+    pending_path.unlink(missing_ok=True)
+    log_audit("upload_confirmed", f"bulk_{total}", user["verein_key"], user["id"])
+    return redirect(f"/verein/dashboard?upload_ok={total}")
 
 
 # ── Datenschutz / Nutzungsbedingungen ────────────────────────────────────────

@@ -267,3 +267,57 @@ def _do_save_import(alle: list, auto_plz: str, form_plz: str, data: dict,
         }, ensure_ascii=False)
     )
     return result_vereine, total
+
+
+def parse_excel_bytes(file_bytes: bytes) -> list:
+    """Parst eine .xlsx-Datei nach dem Vereinskalender-Template und gibt Termin-Dicts zurück."""
+    import openpyxl
+    wb = openpyxl.load_workbook(_io.BytesIO(file_bytes), data_only=True, read_only=True)
+    ws = wb.active
+    termine = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row or len(row) < 3:
+            continue
+        datum_raw, uhrzeit_raw, bezeichnung_raw = row[0], row[1], row[2]
+        ort_raw      = row[3] if len(row) > 3 else None
+        ortschaft_raw = row[4] if len(row) > 4 else None
+
+        if not datum_raw or not bezeichnung_raw:
+            continue
+
+        bezeichnung = str(bezeichnung_raw).strip()
+        if not bezeichnung:
+            continue
+
+        # Datum normalisieren
+        if isinstance(datum_raw, datetime):
+            datum_str = datum_raw.strftime("%Y-%m-%d")
+        else:
+            datum_str = str(datum_raw).strip()
+            m = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", datum_str)
+            if m:
+                datum_str = f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", datum_str):
+                continue
+
+        # Uhrzeit normalisieren
+        uhrzeit_str = ""
+        if uhrzeit_raw is not None and str(uhrzeit_raw).strip():
+            if isinstance(uhrzeit_raw, datetime):
+                uhrzeit_str = uhrzeit_raw.strftime("%H:%M")
+            else:
+                raw = str(uhrzeit_raw).strip()
+                m = re.match(r"(\d{1,2}):(\d{2})", raw)
+                if m:
+                    uhrzeit_str = f"{m.group(1).zfill(2)}:{m.group(2)}"
+
+        termine.append({
+            "datum":      datum_str,
+            "uhrzeit":    uhrzeit_str,
+            "bezeichnung": bezeichnung,
+            "ort":        str(ort_raw).strip() if ort_raw else "",
+            "ortschaft":  str(ortschaft_raw).strip() if ortschaft_raw else "",
+        })
+    wb.close()
+    log(f"📊  Excel-Import: {len(termine)} Termine geparst")
+    return termine

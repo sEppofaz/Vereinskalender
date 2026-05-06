@@ -74,6 +74,13 @@ def init_db():
                 user_id     INTEGER REFERENCES vk_users(id),
                 timestamp   DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS upload_quota (
+                verein_id INTEGER NOT NULL,
+                datum     TEXT    NOT NULL,
+                count     INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (verein_id, datum)
+            );
         """)
 
 
@@ -120,4 +127,22 @@ def log_audit(aktion: str, termin_id: str, verein_key: str, user_id: int):
         conn.execute(
             "INSERT INTO vk_audit (aktion, termin_id, verein_key, user_id) VALUES (?,?,?,?)",
             (aktion, termin_id, verein_key, user_id),
+        )
+
+
+def get_upload_count(verein_id: int, datum: str) -> int:
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT count FROM upload_quota WHERE verein_id=? AND datum=?",
+            (verein_id, datum),
+        ).fetchone()
+        return row["count"] if row else 0
+
+
+def increment_upload_quota(verein_id: int, datum: str):
+    with db_conn() as conn:
+        conn.execute(
+            """INSERT INTO upload_quota (verein_id, datum, count) VALUES (?,?,1)
+               ON CONFLICT(verein_id, datum) DO UPDATE SET count = count + 1""",
+            (verein_id, datum),
         )
