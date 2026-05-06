@@ -244,6 +244,7 @@ def login():
     }.get(hint, "")
 
     error = ""
+    login_user_id = None
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         pw = request.form.get("password", "")
@@ -284,14 +285,19 @@ def login():
                         "UPDATE vk_users SET login_attempts=0, locked_until=NULL WHERE id=?",
                         (row["id"],),
                     )
-                    session_token = create_session(row["id"])
-                    resp = make_response(redirect("/verein/dashboard"))
-                    resp.set_cookie(
-                        "vk_session", session_token,
-                        httponly=True, samesite="Lax",
-                        max_age=SESSION_TIMEOUT_HOURS * 3600,
-                    )
-                    return resp
+                    login_user_id = row["id"]
+
+        # create_session() erst nach dem with-Block aufrufen –
+        # die erste Verbindung ist dann committed und geschlossen.
+        if login_user_id is not None:
+            session_token = create_session(login_user_id)
+            resp = make_response(redirect("/verein/dashboard"))
+            resp.set_cookie(
+                "vk_session", session_token,
+                httponly=True, samesite="Lax",
+                max_age=SESSION_TIMEOUT_HOURS * 3600,
+            )
+            return resp
 
     form = f"""
 {hint_msg}
