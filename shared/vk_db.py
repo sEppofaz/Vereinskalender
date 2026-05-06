@@ -90,7 +90,7 @@ def create_session(user_id: int) -> str:
 def get_session_user(token: str) -> dict | None:
     if not token:
         return None
-    cutoff = (datetime.utcnow() - timedelta(hours=SESSION_TIMEOUT_HOURS)).isoformat()
+    cutoff = (datetime.utcnow() - timedelta(hours=SESSION_TIMEOUT_HOURS)).strftime("%Y-%m-%d %H:%M:%S")
     with db_conn() as conn:
         row = conn.execute(
             """SELECT u.id, u.email, u.role, u.aktiv,
