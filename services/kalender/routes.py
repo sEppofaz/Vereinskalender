@@ -265,11 +265,11 @@ def api_vereine_get():
             "landkreis":          m.get("landkreis", ""),
             "rubrik":             _get_rubrik(key, name, m),
         })
-    termine_raw = [t for t in raw.get("termine", []) if not t.get("geloescht")]
     n_termine = {}
-    for t in termine_raw:
-        k = t.get("verein", "")
-        n_termine[k] = n_termine.get(k, 0) + 1
+    for vkey, events in raw.items():
+        if vkey.startswith("_") or not isinstance(events, list):
+            continue
+        n_termine[vkey] = sum(1 for t in events if not t.get("geloescht"))
     for r in result:
         r["nTermine"] = n_termine.get(r["key"], 0)
     result.sort(key=lambda x: x["name"].lower())
@@ -358,9 +358,8 @@ def api_vereine_delete(key):
         return json.dumps({"error": "Verein nicht gefunden"}), 404, {"Content-Type": "application/json"}
     name = raw["_labels"].pop(key, key)
     raw.get("_meta", {}).pop(key, None)
-    vorher = len(raw.get("termine", []))
-    raw["termine"] = [t for t in raw.get("termine", []) if t.get("verein") != key]
-    geloescht = vorher - len(raw["termine"])
+    vorher = len(raw.pop(key, []))
+    geloescht = vorher
     from shared.kalender_store import KalenderStore
     KalenderStore.update(lambda d: d.clear() or d.update(raw))
     log("Verein geloescht: " + key + " (" + name + "), " + str(geloescht) + " Termine entfernt")
