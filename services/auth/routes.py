@@ -7,7 +7,7 @@ from functools import wraps
 import bcrypt
 from flask import Blueprint, make_response, redirect, request
 
-from shared.vk_db import create_session, db_conn, delete_session, get_session_user, init_db
+from shared.vk_db import SESSION_TIMEOUT_HOURS, create_session, db_conn, delete_session, get_session_user, init_db
 from shared.vk_mail import (
     send_rejected_email,
     send_reset_email,
