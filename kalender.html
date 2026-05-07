@@ -396,7 +396,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <button class="adm-tab on" id="admbtn-upload" onclick="switchAdmTab('upload')">&#128229; Import</button>
       <button class="adm-tab" id="admbtn-ort" onclick="switchAdmTab('ort')">&#128205; Ortschaften</button>
       <button class="adm-tab" id="admbtn-ver" onclick="switchAdmTab('ver')">&#127974; Vereine</button>
-      <button class="adm-tab" id="admbtn-acc" onclick="switchAdmTab('acc')">&#128101; Accounts</button>
+      <button class="adm-tab" id="admbtn-acc" onclick="switchAdmTab('acc')">&#128101; Accounts<span id="acc-pending-badge" style="display:none;background:#ff3b30;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;vertical-align:middle;line-height:16px"></span></button>
     </div>
 
     <!-- Tab 1: Upload -->
@@ -464,8 +464,11 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <!-- Tab 4: Accounts -->
     <div id="adm-tab-acc" style="display:none">
     <div class="filter-card" style="margin-bottom:12px">
-      <div class="f-toggle" style="cursor:default"><span class="f-name">&#128101; Ausstehende Registrierungen</span></div>
+      <div class="f-toggle" style="cursor:default"><span class="f-name">&#9203; Ausstehende Anfragen</span></div>
       <div id="acc-list" style="padding:0 14px 14px;font-size:14px;color:var(--text2)">Lade&hellip;</div>
+    </div>
+    <div id="acc-all-content">
+      <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128197; Lade&#8230;</div>
     </div>
     </div>
 
@@ -1161,6 +1164,7 @@ async function checkPassword(){
       sessionStorage.setItem("ut",pw);
       document.getElementById("pw-gate").style.display="none";
       document.getElementById("imp-content").style.display="";
+      loadPendingVereine();
     } else {
       err.textContent="Falsches Passwort.";
       document.getElementById("pw-input").select();
@@ -1252,19 +1256,24 @@ function switchAdmTab(tab){
   });
   if(tab==="ort")loadOrtschaften();
   if(tab==="ver")loadVereine();
-  if(tab==="acc")loadPendingVereine();
+  if(tab==="acc"){loadPendingVereine();loadAllAccounts();}
 }
 
 async function loadPendingVereine(){
   const el=document.getElementById("acc-list");
+  const badge=document.getElementById("acc-pending-badge");
   const token=sessionStorage.getItem("ut")||"";
   try{
     const list=await(await fetch("/api/admin/vereine-pending",{headers:{"X-Upload-Token":token}})).json();
-    if(!list.length){el.innerHTML="<p style='color:var(--text3)'>Keine offenen Anfragen.</p>";return;}
+    if(badge){
+      if(list.length>0){badge.textContent=list.length;badge.style.display="";}
+      else{badge.style.display="none";}
+    }
+    if(!list.length){el.innerHTML="<p style='color:var(--text3);margin:0'>Keine offenen Anfragen.</p>";return;}
     el.innerHTML=list.map(v=>`
       <div style="border:1.5px solid var(--border2);border-radius:10px;padding:10px 12px;margin:8px 0">
-        <div style="font-weight:600">${v.verein_name}</div>
-        <div style="color:var(--text3);font-size:12px">${v.email} &middot; ${v.created_at?.slice(0,10)||""}</div>
+        <div style="font-weight:600">${escHtml(v.verein_name)}</div>
+        <div style="color:var(--text3);font-size:12px">${escHtml(v.email)} &middot; ${v.created_at?.slice(0,10)||""}</div>
         <div style="display:flex;gap:8px;margin-top:8px">
           <button onclick="approveVerein(${v.id},this)" style="flex:1;padding:7px;border-radius:8px;background:#34c759;color:#fff;border:none;font-weight:600;cursor:pointer">&#10003; Freigeben</button>
           <button onclick="rejectVerein(${v.id},this)" style="flex:1;padding:7px;border-radius:8px;background:#ff3b30;color:#fff;border:none;font-weight:600;cursor:pointer">&#10005; Ablehnen</button>
@@ -1286,6 +1295,123 @@ async function rejectVerein(id,btn){
   btn.disabled=true;
   await fetch(`/api/admin/vereine/${id}/reject`,{method:"POST",headers:{"X-Upload-Token":token}});
   loadPendingVereine();
+}
+
+/* ── Accounts-Tab: Alle Accounts ── */
+function escHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+async function loadAllAccounts(){
+  const el=document.getElementById("acc-all-content");
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Lade&#8230;</div>';
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const list=await(await fetch("/api/admin/users",{headers:{"X-Upload-Token":token}})).json();
+    renderAllAccounts(list);
+  }catch(e){
+    el.innerHTML='<div style="color:#ff3b30;padding:12px">Fehler beim Laden</div>';
+  }
+}
+
+function renderAllAccounts(list){
+  const el=document.getElementById("acc-all-content");
+  if(!list||!list.length){
+    el.innerHTML='<div style="color:var(--text3);padding:12px">Keine Accounts</div>';
+    return;
+  }
+  list.sort((a,b)=>a.verein_name.localeCompare(b.verein_name,"de"));
+  const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const used=new Set(list.map(u=>u.verein_name[0]?.toUpperCase()));
+  const alphaBar=`<div class="alpha-bar">${alpha.map(l=>
+    `<button class="alpha-btn${used.has(l)?"":" inactive"}" onclick="${used.has(l)?`scrollToAccLetter('${l}')`:""}">${l}</button>`
+  ).join("")}</div>`;
+  const grouped={};
+  list.forEach(u=>{
+    const l=(u.verein_name[0]||"#").toUpperCase();
+    if(!grouped[l])grouped[l]=[];
+    grouped[l].push(u);
+  });
+  const statusBadge=u=>{
+    if(u.verein_status==="aktiv"&&u.aktiv&&u.email_verified)
+      return `<span style="color:#34c759;font-size:11px">&#10003; aktiv</span>`;
+    if(u.verein_status==="pending")
+      return `<span style="color:#ff9f0a;font-size:11px">&#9203; ausstehend</span>`;
+    if(!u.email_verified)
+      return `<span style="color:#ff9f0a;font-size:11px">&#9993; E-Mail unbestätigt</span>`;
+    return `<span style="color:#8e8e93;font-size:11px">inaktiv</span>`;
+  };
+  const rows=Object.keys(grouped).sort().map(l=>{
+    const items=grouped[l].map(u=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:.5px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(u.verein_name)}</div>
+          <div style="font-size:11px;color:var(--text3)">${escHtml(u.email)}${u.name?` · ${escHtml(u.name)}`:""}${u.telefon?` · ${escHtml(u.telefon)}`:""}</div>
+          <div style="font-size:11px;margin-top:1px">${statusBadge(u)}</div>
+        </div>
+        <button class="ver-del-btn" style="border-color:var(--border2);color:var(--text2)"
+          data-uid="${u.id}" data-name="${escHtml(u.name||"")}" data-tel="${escHtml(u.telefon||"")}"
+          onclick="openUserEditModal(this)">&#9998;</button>
+      </div>`).join("");
+    return `<div class="ver-section-hdr" id="acc-letter-${l}">${l}</div><div class="filter-card" style="padding:0;margin-bottom:6px">${items}</div>`;
+  }).join("");
+  el.innerHTML=`
+    <div style="font-size:12px;color:var(--text3);padding:0 2px 10px">${list.length} Account${list.length!==1?"s":""}</div>
+    ${alphaBar}
+    ${rows}`;
+}
+
+function scrollToAccLetter(l){
+  const el=document.getElementById("acc-letter-"+l);
+  if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function openUserEditModal(btn){
+  const id=+btn.dataset.uid;
+  const name=btn.dataset.name||"";
+  const telefon=btn.dataset.tel||"";
+  document.getElementById("user-edit-modal")?.remove();
+  const modal=document.createElement("div");
+  modal.id="user-edit-modal";
+  modal.className="modal-overlay";
+  modal.innerHTML=`
+    <div class="modal-sheet">
+      <div class="modal-title">Account bearbeiten</div>
+      <div style="margin-top:12px">
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Name (Ansprechpartner)</label>
+        <input id="edit-user-name" type="text" value="${escHtml(name)}" placeholder="Vorname Nachname"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:15px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+        <label style="font-size:12px;color:var(--text2);display:block;margin:10px 0 4px">Telefon</label>
+        <input id="edit-user-tel" type="tel" value="${escHtml(telefon)}" placeholder="+49 ..."
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:15px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button onclick="saveUserEdit(${id})"
+          style="flex:1;padding:10px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:600;cursor:pointer;font-size:15px">Speichern</button>
+        <button onclick="document.getElementById('user-edit-modal').remove()"
+          style="flex:1;padding:10px;border-radius:10px;background:var(--bg2);color:var(--text);border:none;font-weight:600;cursor:pointer;font-size:15px">Abbrechen</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
+}
+
+async function saveUserEdit(id){
+  const name=document.getElementById("edit-user-name").value.trim();
+  const telefon=document.getElementById("edit-user-tel").value.trim();
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const r=await fetch(`/api/admin/users/${id}`,{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json","X-Upload-Token":token},
+      body:JSON.stringify({name,telefon}),
+    });
+    if(r.ok){
+      document.getElementById("user-edit-modal")?.remove();
+      loadAllAccounts();
+    }else{
+      alert("Fehler beim Speichern");
+    }
+  }catch(e){alert("Netzwerkfehler");}
 }
 
 /* ── Vereine-Tab (Admin) ── */

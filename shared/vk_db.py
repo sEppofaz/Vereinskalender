@@ -82,6 +82,14 @@ def init_db():
                 PRIMARY KEY (verein_id, datum)
             );
         """)
+        for col_sql in [
+            "ALTER TABLE vk_users ADD COLUMN name TEXT",
+            "ALTER TABLE vk_users ADD COLUMN telefon TEXT",
+        ]:
+            try:
+                conn.execute(col_sql)
+            except Exception:
+                pass
 
 
 def create_session(user_id: int) -> str:

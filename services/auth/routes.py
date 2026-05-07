@@ -452,6 +452,43 @@ def pending_vereine():
     return [dict(r) for r in rows]
 
 
+@auth_bp.route("/api/admin/users")
+def admin_users():
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return {"error": "Unauthorized"}, 401
+    with db_conn() as conn:
+        rows = conn.execute(
+            """SELECT u.id, u.email, u.name, u.telefon, u.aktiv,
+                      u.email_verified, u.created_at,
+                      v.id as verein_id, v.verein_name, v.status as verein_status
+               FROM vk_users u
+               JOIN vereine_accounts v ON v.id = u.verein_id
+               WHERE u.role = 'admin'
+               ORDER BY v.verein_name""",
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@auth_bp.route("/api/admin/users/<int:user_id>", methods=["PATCH"])
+def admin_update_user(user_id: int):
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return {"error": "Unauthorized"}, 401
+    body = request.get_json(silent=True) or {}
+    name    = body.get("name",    "").strip() or None
+    telefon = body.get("telefon", "").strip() or None
+    with db_conn() as conn:
+        row = conn.execute("SELECT id FROM vk_users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            return {"error": "Nicht gefunden"}, 404
+        conn.execute(
+            "UPDATE vk_users SET name = ?, telefon = ? WHERE id = ?",
+            (name, telefon, user_id),
+        )
+    return {"ok": True}
+
+
 
 
 # ── Session-Status (für Client-JS) ──────────────────────────────────────────
