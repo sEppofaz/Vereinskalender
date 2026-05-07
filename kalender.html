@@ -632,6 +632,7 @@ function buildLandkreisFilter(){
 function selectLandkreis(lk){
   aktLandkreis=lk==="alle"?null:lk;
   document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk===lk));
+  filterOrtChipsForLandkreis();
   updateAllBadges();
   render();
 }
@@ -672,6 +673,8 @@ function resetAll(){
   document.querySelectorAll("[data-z]").forEach(c=>c.classList.toggle("on",c.dataset.z==="zukunft"));
   document.querySelectorAll("[data-o]").forEach(c=>c.classList.toggle("on",c.dataset.o==="alle"));
   document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk==="alle"));
+  filterVereinListForOrt();
+  filterOrtChipsForLandkreis();
   updateChecks();
   updateAllBadges();
   render();
@@ -720,6 +723,34 @@ function buildOrtFilter(){
   container.querySelector('[data-o="alle"]').onclick=()=>toggleOrt("alle");
 }
 
+function filterVereinListForOrt(){
+  const lbls=document.querySelectorAll("#v-list .v-check");
+  if(!aktOrte.size){lbls.forEach(l=>l.style.display="");return;}
+  const vereinsInOrte=new Set();
+  allT.forEach(t=>{
+    const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
+    if(o&&aktOrte.has(o))vereinsInOrte.add(t.verein);
+  });
+  lbls.forEach(lbl=>{
+    const cb=lbl.querySelector("[data-vk]");
+    if(cb)lbl.style.display=vereinsInOrte.has(cb.dataset.vk)?"":"none";
+  });
+}
+
+function filterOrtChipsForLandkreis(){
+  const chips=document.querySelectorAll("[data-o]:not([data-o='alle'])");
+  if(!aktLandkreis){chips.forEach(c=>c.style.display="");return;}
+  const vereinsInLk=new Set(
+    Object.entries(meta).filter(([,m])=>m.landkreis===aktLandkreis).map(([k])=>k)
+  );
+  const orteInLk=new Set();
+  allT.forEach(t=>{
+    const o=(t.ortschaft||"").trim();
+    if(o&&vereinsInLk.has(t.verein))orteInLk.add(o);
+  });
+  chips.forEach(c=>c.style.display=orteInLk.has(c.dataset.o)?"":"none");
+}
+
 function toggleOrt(o){
   if(o==="alle"){
     aktOrte=new Set();
@@ -731,7 +762,7 @@ function toggleOrt(o){
   document.querySelectorAll("[data-o]:not([data-o='alle'])").forEach(c=>{
     c.classList.toggle("on",aktOrte.has(c.dataset.o));
   });
-  // Ort-Filter ist jetzt direkt t.ort-basiert – aktVereine NICHT mehr verändern
+  filterVereinListForOrt();
   updateAllBadges();
   render();
 }
@@ -780,6 +811,7 @@ function selectAllVereine(all){
   const kc=document.getElementById("ver-keine-chip");
   if(ac)ac.style.color=all?"var(--accent)":"var(--text3)";
   if(kc)kc.style.color=all?"var(--text3)":"var(--accent)";
+  filterVereinListForOrt();
   updateChecks();
   updateAllBadges();
   render();
@@ -844,6 +876,7 @@ function onCbChange(cb){
   else aktVereine.delete(cb.dataset.vk);
   aktOrte=new Set();
   document.querySelectorAll("[data-o]").forEach(c=>c.classList.toggle("on",c.dataset.o==="alle"));
+  filterVereinListForOrt();
   updateAllBadges();
   render();
 }
