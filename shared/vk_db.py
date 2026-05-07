@@ -26,6 +26,51 @@ def db_conn():
 
 
 def init_db():
+    # Migration: UNIQUE-Constraint auf email entfernen (eine E-Mail → mehrere Vereine)
+    with db_conn() as conn:
+        schema = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='vk_users'"
+        ).fetchone()
+        if schema and "UNIQUE NOT NULL" in schema["sql"] and "email" in schema["sql"]:
+            existing_cols = [r["name"] for r in conn.execute("PRAGMA table_info(vk_users)").fetchall()]
+            name_sel   = "name"    if "name"    in existing_cols else "NULL"
+            telefon_sel = "telefon" if "telefon" in existing_cols else "NULL"
+            conn.executescript(f"""
+                PRAGMA foreign_keys=OFF;
+                CREATE TABLE vk_users_new (
+                    id                    INTEGER PRIMARY KEY,
+                    email                 TEXT NOT NULL,
+                    password_hash         TEXT NOT NULL,
+                    verein_id             INTEGER NOT NULL REFERENCES vereine_accounts(id),
+                    role                  TEXT NOT NULL DEFAULT 'admin',
+                    aktiv                 BOOLEAN DEFAULT 1,
+                    created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    einladungs_token      TEXT,
+                    einladungs_expires    DATETIME,
+                    reset_token           TEXT,
+                    reset_token_expires   DATETIME,
+                    email_verified        BOOLEAN DEFAULT 0,
+                    verify_token          TEXT,
+                    verify_token_expires  DATETIME,
+                    totp_secret           TEXT,
+                    totp_recovery_hashes  TEXT,
+                    login_attempts        INTEGER DEFAULT 0,
+                    locked_until          DATETIME,
+                    name                  TEXT,
+                    telefon               TEXT
+                );
+                INSERT INTO vk_users_new
+                    SELECT id, email, password_hash, verein_id, role, aktiv, created_at,
+                           einladungs_token, einladungs_expires, reset_token, reset_token_expires,
+                           email_verified, verify_token, verify_token_expires, totp_secret,
+                           totp_recovery_hashes, login_attempts, locked_until,
+                           {name_sel}, {telefon_sel}
+                    FROM vk_users;
+                DROP TABLE vk_users;
+                ALTER TABLE vk_users_new RENAME TO vk_users;
+                PRAGMA foreign_keys=ON;
+            """)
+
     with db_conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS vereine_accounts (
@@ -40,7 +85,7 @@ def init_db():
 
             CREATE TABLE IF NOT EXISTS vk_users (
                 id                    INTEGER PRIMARY KEY,
-                email                 TEXT UNIQUE NOT NULL,
+                email                 TEXT NOT NULL,
                 password_hash         TEXT NOT NULL,
                 verein_id             INTEGER NOT NULL REFERENCES vereine_accounts(id),
                 role                  TEXT NOT NULL DEFAULT 'admin',
@@ -56,7 +101,9 @@ def init_db():
                 totp_secret           TEXT,
                 totp_recovery_hashes  TEXT,
                 login_attempts        INTEGER DEFAULT 0,
-                locked_until          DATETIME
+                locked_until          DATETIME,
+                name                  TEXT,
+                telefon               TEXT
             );
 
             CREATE TABLE IF NOT EXISTS vk_sessions (
@@ -82,6 +129,7 @@ def init_db():
                 PRIMARY KEY (verein_id, datum)
             );
         """)
+        # Fallback für sehr alte Installs ohne name/telefon
         for col_sql in [
             "ALTER TABLE vk_users ADD COLUMN name TEXT",
             "ALTER TABLE vk_users ADD COLUMN telefon TEXT",

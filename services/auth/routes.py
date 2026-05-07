@@ -1,6 +1,7 @@
 import os
 import secrets
 import re
+import threading
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -21,6 +22,27 @@ auth_bp = Blueprint("auth", __name__)
 UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "")
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+
+# Kurzlebiger Pre-Auth-Store für Vereinsauswahl bei mehreren Accounts pro E-Mail
+# token → ([(user_id, verein_name)], expires)
+_preauth: dict[str, tuple[list[tuple[int, str]], datetime]] = {}
+_preauth_lock = threading.Lock()
+
+
+def _make_preauth(choices: list[tuple[int, str]]) -> str:
+    token = secrets.token_urlsafe(16)
+    with _preauth_lock:
+        _preauth[token] = (choices, datetime.utcnow() + timedelta(minutes=5))
+    return token
+
+
+def _pop_preauth(token: str) -> list[tuple[int, str]] | None:
+    with _preauth_lock:
+        entry = _preauth.pop(token, None)
+    if not entry:
+        return None
+    choices, expires = entry
+    return choices if datetime.utcnow() < expires else None
 
 _CSS = """
 <style>
@@ -132,25 +154,19 @@ def register():
             error = "Bitte die Selbstverpflichtungserklärung bestätigen."
         else:
             with db_conn() as conn:
-                ex = conn.execute(
-                    "SELECT id FROM vk_users WHERE email = ?", (email,)
+                verein_row = conn.execute(
+                    "INSERT INTO vereine_accounts (verein_name, selbstverpflichtung) VALUES (?,?) RETURNING id",
+                    (verein_name, 1),
                 ).fetchone()
-                if ex:
-                    error = "Diese E-Mail-Adresse ist bereits registriert."
-                else:
-                    verein_row = conn.execute(
-                        "INSERT INTO vereine_accounts (verein_name, selbstverpflichtung) VALUES (?,?) RETURNING id",
-                        (verein_name, 1),
-                    ).fetchone()
-                    verein_id = verein_row["id"]
-                    token = secrets.token_urlsafe(32)
-                    expires = (datetime.utcnow() + timedelta(hours=24)).isoformat()
-                    conn.execute(
-                        """INSERT INTO vk_users
-                           (email, password_hash, verein_id, role, verify_token, verify_token_expires)
-                           VALUES (?,?,?,?,?,?)""",
-                        (email, _hash_pw(pw), verein_id, "admin", token, expires),
-                    )
+                verein_id = verein_row["id"]
+                token = secrets.token_urlsafe(32)
+                expires = (datetime.utcnow() + timedelta(hours=24)).isoformat()
+                conn.execute(
+                    """INSERT INTO vk_users
+                       (email, password_hash, verein_id, role, verify_token, verify_token_expires)
+                       VALUES (?,?,?,?,?,?)""",
+                    (email, _hash_pw(pw), verein_id, "admin", token, expires),
+                )
             if not error:
                 send_verify_email(email, token)
                 _telegram_approve_msg(verein_id, verein_name, email)
@@ -214,18 +230,21 @@ def verify_email():
 def resend_verify():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
+        tokens_to_send = []
         with db_conn() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 "SELECT id FROM vk_users WHERE email=? AND email_verified=0", (email,)
-            ).fetchone()
-            if row:
+            ).fetchall()
+            for row in rows:
                 token = secrets.token_urlsafe(32)
                 expires = (datetime.utcnow() + timedelta(hours=24)).isoformat()
                 conn.execute(
                     "UPDATE vk_users SET verify_token=?, verify_token_expires=? WHERE id=?",
                     (token, expires, row["id"]),
                 )
-                send_verify_email(email, token)
+                tokens_to_send.append(token)
+        for token in tokens_to_send:
+            send_verify_email(email, token)
         body = '<p class="ok">Falls die E-Mail existiert und noch nicht bestätigt ist, wurde ein neuer Link verschickt.</p><div class="spam-hint">📬 Bitte auch im <strong>Spam-Ordner</strong> nachsehen.</div>' + _BACK
         return _page("Link verschickt", body)
     form = f'<form method="post"><label>E-Mail-Adresse</label><input name="email" type="email" required><button class="btn" type="submit">Neuen Link anfordern</button></form>{_BACK}'
@@ -238,65 +257,80 @@ def resend_verify():
 def login():
     hint = request.args.get("hint", "")
     hint_msg = {
-        "verify": '<p class="hint">Bitte bestätige zuerst deine E-Mail-Adresse.</p>',
+        "verify":  '<p class="hint">Bitte bestätige zuerst deine E-Mail-Adresse.</p>',
         "pending": '<p class="hint">Dein Konto wartet noch auf Freigabe durch den Administrator.</p>',
-        "reset": '<p class="ok">Passwort wurde geändert. Bitte jetzt einloggen.</p>',
+        "reset":   '<p class="ok">Passwort wurde geändert. Bitte jetzt einloggen.</p>',
     }.get(hint, "")
 
     error = ""
     login_user_id = None
+
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
-        pw = request.form.get("password", "")
+        pw    = request.form.get("password", "")
+        now   = datetime.utcnow()
+
         with db_conn() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 """SELECT u.id, u.password_hash, u.aktiv, u.email_verified,
                           u.login_attempts, u.locked_until, u.role,
-                          v.status as verein_status
+                          v.status as verein_status, v.verein_name
                    FROM vk_users u
                    JOIN vereine_accounts v ON v.id = u.verein_id
                    WHERE u.email = ?""",
                 (email,),
-            ).fetchone()
+            ).fetchall()
 
-            if not row:
+            if not rows:
                 error = "E-Mail oder Passwort falsch."
             else:
-                if row["locked_until"] and datetime.fromisoformat(row["locked_until"]) > datetime.utcnow():
+                # Wenn irgendein Account für diese E-Mail gesperrt ist → Lockout
+                if any(r["locked_until"] and datetime.fromisoformat(r["locked_until"]) > now for r in rows):
                     error = f"Zu viele Fehlversuche. Bitte {LOCKOUT_MINUTES} Minuten warten."
-                elif not _check_pw(pw, row["password_hash"]):
-                    attempts = row["login_attempts"] + 1
-                    locked = None
-                    if attempts >= MAX_LOGIN_ATTEMPTS:
-                        locked = (datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)).isoformat()
-                    conn.execute(
-                        "UPDATE vk_users SET login_attempts=?, locked_until=? WHERE id=?",
-                        (attempts, locked, row["id"]),
-                    )
-                    error = "E-Mail oder Passwort falsch."
-                elif not row["aktiv"]:
-                    error = "Dein Konto ist deaktiviert."
-                elif not row["email_verified"]:
-                    return redirect("/verein/login?hint=verify")
-                elif row["verein_status"] != "aktiv":
-                    return redirect("/verein/login?hint=pending")
                 else:
-                    conn.execute(
-                        "UPDATE vk_users SET login_attempts=0, locked_until=NULL WHERE id=?",
-                        (row["id"],),
-                    )
-                    login_user_id = row["id"]
+                    matched = [r for r in rows if _check_pw(pw, r["password_hash"])]
 
-        # create_session() erst nach dem with-Block aufrufen –
-        # die erste Verbindung ist dann committed und geschlossen.
+                    if not matched:
+                        # Fehlversuch: alle Rows dieser E-Mail hochzählen und ggf. sperren
+                        new_attempts = max(r["login_attempts"] for r in rows) + 1
+                        locked = (now + timedelta(minutes=LOCKOUT_MINUTES)).isoformat() if new_attempts >= MAX_LOGIN_ATTEMPTS else None
+                        ids = [r["id"] for r in rows]
+                        conn.execute(
+                            f"UPDATE vk_users SET login_attempts=?, locked_until=? WHERE id IN ({','.join('?'*len(ids))})",
+                            [new_attempts, locked] + ids,
+                        )
+                        error = "E-Mail oder Passwort falsch."
+                    else:
+                        # Erfolg: Zähler aller gematchten Rows zurücksetzen
+                        matched_ids = [r["id"] for r in matched]
+                        conn.execute(
+                            f"UPDATE vk_users SET login_attempts=0, locked_until=NULL WHERE id IN ({','.join('?'*len(matched_ids))})",
+                            matched_ids,
+                        )
+                        # Nur vollständig nutzbare Accounts weiter beachten
+                        usable = [r for r in matched if r["aktiv"] and r["email_verified"] and r["verein_status"] == "aktiv"]
+
+                        if not usable:
+                            if any(not r["aktiv"] for r in matched):
+                                error = "Dein Konto ist deaktiviert."
+                            elif any(not r["email_verified"] for r in matched):
+                                return redirect("/verein/login?hint=verify")
+                            else:
+                                return redirect("/verein/login?hint=pending")
+                        elif len(usable) == 1:
+                            login_user_id = usable[0]["id"]
+                        else:
+                            # Mehrere Vereine für diese E-Mail → Auswahl anbieten
+                            choices = [(r["id"], r["verein_name"]) for r in usable]
+                            preauth_token = _make_preauth(choices)
+                            resp = make_response(redirect("/verein/login/verein-waehlen"))
+                            resp.set_cookie("vk_preauth", preauth_token, httponly=True, samesite="Lax", max_age=300)
+                            return resp
+
         if login_user_id is not None:
             session_token = create_session(login_user_id)
             resp = make_response(redirect("/verein/dashboard"))
-            resp.set_cookie(
-                "vk_session", session_token,
-                httponly=True, samesite="Lax",
-                max_age=SESSION_TIMEOUT_HOURS * 3600,
-            )
+            resp.set_cookie("vk_session", session_token, httponly=True, samesite="Lax", max_age=SESSION_TIMEOUT_HOURS * 3600)
             return resp
 
     form = f"""
@@ -313,6 +347,43 @@ def login():
 <p class="hint"><a href="/verein/passwort-vergessen">Passwort vergessen?</a></p>
 <p class="hint">Noch kein Konto? <a href="/verein/register">Verein registrieren</a></p>"""
     return _page("Login", form)
+
+
+@auth_bp.route("/verein/login/verein-waehlen", methods=["GET", "POST"])
+def login_verein_waehlen():
+    preauth_token = request.cookies.get("vk_preauth", "")
+    choices = _pop_preauth(preauth_token)
+    if not choices:
+        return redirect("/verein/login")
+
+    if request.method == "POST":
+        try:
+            chosen_id = int(request.form.get("user_id", ""))
+        except ValueError:
+            return redirect("/verein/login")
+        valid_ids = [uid for uid, _ in choices]
+        if chosen_id not in valid_ids:
+            return redirect("/verein/login")
+        session_token = create_session(chosen_id)
+        resp = make_response(redirect("/verein/dashboard"))
+        resp.set_cookie("vk_session", session_token, httponly=True, samesite="Lax", max_age=SESSION_TIMEOUT_HOURS * 3600)
+        resp.delete_cookie("vk_preauth")
+        return resp
+
+    # GET: Auswahl-Seite anzeigen
+    options = "".join(
+        f"""<form method="post" style="margin:.5rem 0">
+  <input type="hidden" name="user_id" value="{uid}">
+  <button class="btn" type="submit">{verein_name}</button>
+</form>"""
+        for uid, verein_name in choices
+    )
+    body = f"""
+<p style="color:#aeaeb2;font-size:.9rem">Deine E-Mail-Adresse ist für mehrere Vereine registriert. Für welchen möchtest du dich einloggen?</p>
+{options}
+<hr>
+<a class="btn btn-sec" href="/verein/login">← Zurück</a>"""
+    return _page("Verein wählen", body)
 
 
 # ── Logout ───────────────────────────────────────────────────────────────────
@@ -333,18 +404,21 @@ def logout():
 def forgot_password():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
+        tokens_to_send = []
         with db_conn() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 "SELECT id FROM vk_users WHERE email = ?", (email,)
-            ).fetchone()
-            if row:
+            ).fetchall()
+            for row in rows:
                 token = secrets.token_urlsafe(32)
                 expires = (datetime.utcnow() + timedelta(hours=1)).isoformat()
                 conn.execute(
                     "UPDATE vk_users SET reset_token=?, reset_token_expires=? WHERE id=?",
                     (token, expires, row["id"]),
                 )
-                send_reset_email(email, token)
+                tokens_to_send.append(token)
+        for token in tokens_to_send:
+            send_reset_email(email, token)
         body = '<p class="ok">Falls diese E-Mail registriert ist, wurde ein Reset-Link verschickt.</p><div class="spam-hint">📬 Bitte auch im <strong>Spam-Ordner</strong> nachsehen.</div>' + _BACK
         return _page("Link verschickt", body)
     form = f'<p style="color:#aeaeb2">Gib deine E-Mail-Adresse ein. Du erhältst einen Link zum Passwort-Zurücksetzen.</p><form method="post"><label>E-Mail</label><input name="email" type="email" required><button class="btn" type="submit">Reset-Link anfordern</button></form>{_BACK}'
