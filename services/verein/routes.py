@@ -88,6 +88,44 @@ def dashboard(user):
     if upload_ok and upload_ok.isdigit():
         upload_banner = f'<p class="ok">✅ {upload_ok} Termine erfolgreich importiert.</p>'
 
+    hilfe_block = ""
+    if user["role"] == "admin":
+        hilfe_block = """
+<details style="margin-top:1rem;border:1px solid #3a3a3c;border-radius:.625rem;overflow:hidden">
+  <summary style="padding:.75rem 1rem;cursor:pointer;background:#2c2c2e;color:#f2f2f7;font-size:.9rem;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center">
+    ❓ Hilfe &amp; FAQ <span style="color:#aeaeb2;font-weight:400;font-size:.8rem">▾</span>
+  </summary>
+  <div style="padding:1rem;display:flex;flex-direction:column;gap:.85rem;background:#1c1c1e">
+
+    <div>
+      <div style="font-weight:600;font-size:.9rem;margin-bottom:.25rem">📄 PDF oder Foto hochladen</div>
+      <div style="color:#aeaeb2;font-size:.85rem">Claude KI liest das Dokument und extrahiert Termine automatisch. Funktioniert mit Jahresprogrammen, Pfarrbriefen und Fotos von Plakaten (JPG, PNG, HEIC). Dauer: ca. 15–60 Sek.</div>
+    </div>
+
+    <div>
+      <div style="font-weight:600;font-size:.9rem;margin-bottom:.25rem">📊 Excel-Vorlage</div>
+      <div style="color:#aeaeb2;font-size:.85rem">Vorlage herunterladen, ausfüllen und hochladen – kein KI-Call, sofortige Verarbeitung.<br>
+      Datumsformat: <code style="background:#3a3a3c;padding:0 4px;border-radius:3px">TT.MM.JJJJ</code> oder <code style="background:#3a3a3c;padding:0 4px;border-radius:3px">JJJJ-MM-TT</code> – kein Text wie „ca." oder Leerzeichen in der Datumsspalte.</div>
+    </div>
+
+    <div>
+      <div style="font-weight:600;font-size:.9rem;margin-bottom:.25rem">⏱ Tageslimit</div>
+      <div style="color:#aeaeb2;font-size:.85rem">3 Uploads pro Tag – Zurücksetzung um Mitternacht. Das Limit gilt pro Verein.</div>
+    </div>
+
+    <div>
+      <div style="font-weight:600;font-size:.9rem;margin-bottom:.25rem">🔄 Upload fehlgeschlagen?</div>
+      <div style="color:#aeaeb2;font-size:.85rem">
+        <b style="color:#f2f2f7">PDF:</b> Seite als Foto abfotografieren und als JPG hochladen.<br>
+        <b style="color:#f2f2f7">Excel:</b> Datumsspalte prüfen – nur reines Datum, kein zusätzlicher Text.<br>
+        <b style="color:#f2f2f7">Allgemein:</b> Datei erneut hochladen oder per Mail an
+        <a href="mailto:Vereinskalender@icloud.com" style="color:#0a84ff">Vereinskalender@icloud.com</a> schicken – wir importieren manuell.
+      </div>
+    </div>
+
+  </div>
+</details>"""
+
     body = f"""
 {upload_banner}<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
   <div>
@@ -103,6 +141,7 @@ def dashboard(user):
 <h2 style="font-size:1rem;margin:1rem 0 .5rem">Termine ({len(termine)})</h2>
 {rows}
 {mitglieder_link}
+{hilfe_block}
 <hr>
 <a class="btn btn-sec" href="/verein/passwort" style="margin-top:.5rem">🔑 Passwort ändern</a>
 <a href="/" style="display:block;text-align:center;color:#aeaeb2;font-size:.85rem;margin-top:1rem">← Zum Kalender</a>"""
