@@ -242,6 +242,7 @@ Danach prüft der Administrator deine Anfrage (in der Regel innerhalb eines Tage
   </div>
   <button class="btn" type="submit">Registrieren</button>
 </form>
+<a class="btn btn-sec" href="/verein/login" style="margin-top:.5rem">← Abbrechen</a>
 <hr>
 <p class="hint">Bereits registriert? <a href="/verein/login">Zum Login</a></p>
 <p class="hint"><a href="/verein/datenschutz">Datenschutzerklärung</a> · <a href="/verein/nutzungsbedingungen">Nutzungsbedingungen</a></p>"""
