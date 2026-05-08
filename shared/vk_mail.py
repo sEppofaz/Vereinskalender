@@ -103,10 +103,22 @@ def send_invite_email(to_email: str, token: str, verein_name: str) -> bool:
 
 
 def send_welcome_email(to_email: str, verein_name: str) -> bool:
-    link = f"{BASE_URL}/verein/login"
+    login_link  = f"{BASE_URL}/verein/login"
+    upload_link = f"{BASE_URL}/verein/upload"
+    profil_link = f"{BASE_URL}/verein/profil"
     body = f"""<h2>Willkommen beim Vereinskalender!</h2>
-<p>Dein Konto für <strong>{verein_name}</strong> wurde freigeschaltet. Du kannst jetzt Termine eintragen und verwalten.</p>
-<a class="btn" href="{link}">Jetzt einloggen</a>"""
+<p>Das Konto für <strong>{verein_name}</strong> ist freigeschaltet. In drei Schritten seid ihr dabei:</p>
+<ol style="margin:12px 0 16px;padding-left:20px;color:#3c3c43;line-height:2;font-size:14px">
+  <li><strong>Profil prüfen</strong> – Heimatort, PLZ und Rubrik kontrollieren:<br>
+      <a href="{profil_link}" style="color:#6D28D9">{profil_link}</a></li>
+  <li><strong>Termine hochladen</strong> – Jahresprogramm als PDF, Foto oder Excel:<br>
+      <a href="{upload_link}" style="color:#6D28D9">{upload_link}</a></li>
+  <li><strong>Kalender abonnieren</strong> – Auf <a href="{BASE_URL}" style="color:#6D28D9">vereinskalender.online</a>
+      den Button <em>„Abonnieren"</em> antippen – dann habt ihr alle Termine automatisch im iPhone-Kalender.</li>
+</ol>
+<a class="btn" href="{login_link}">Jetzt einloggen</a>
+<p class="hint">Bei Fragen einfach auf diese E-Mail antworten oder schreiben an
+<a href="mailto:Vereinskalender@icloud.com" style="color:#6D28D9">Vereinskalender@icloud.com</a>.</p>"""
     return _send(to_email, f"Konto freigeschaltet – {verein_name}", _html_wrap("Willkommen!", body))
 
 
