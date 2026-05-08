@@ -1698,6 +1698,12 @@ function showTerminEdit(idx){
           Abbrechen
         </button>
       </div>
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+        <button onclick="deleteTermin(${idx})"
+          style="width:100%;padding:9px;border:1.5px solid #ff3b30;border-radius:10px;background:none;color:#ff3b30;font-size:14px;cursor:pointer">
+          &#128465; Termin l&ouml;schen
+        </button>
+      </div>
     </div>
   `;
 }
@@ -1737,6 +1743,21 @@ async function saveTermin(idx){
       msg.style.color="red";msg.textContent="❌ "+(d.error||"Fehler");
     }
   }catch(e){msg.style.color="red";msg.textContent="❌ Netzwerkfehler";}
+}
+async function deleteTermin(idx){
+  const t=_admTermine[idx];
+  if(!confirm(`Termin wirklich löschen?\n\n${t.datum}  ${t.uhrzeit||""}\n${t.bezeichnung}\n${t._vereinName}`))return;
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const r=await fetch("/api/termine",{
+      method:"DELETE",
+      headers:{"Content-Type":"application/json","X-Upload-Token":token},
+      body:JSON.stringify({verein_key:t.verein,datum:t.datum,bezeichnung:t.bezeichnung}),
+    });
+    const d=await r.json();
+    if(d.ok){_admTermine.splice(idx,1);loadTermine();}
+    else alert("❌ "+(d.error||"Fehler beim Löschen"));
+  }catch(e){alert("❌ Netzwerkfehler");}
 }
 
 /* ── Ortschaften-Bestätigungs-Modal ── */
