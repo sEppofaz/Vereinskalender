@@ -1623,31 +1623,42 @@ async function updateOrtschaft(name,action){
 let _admTermine=[];
 async function loadTermine(){
   const el=document.getElementById("trm-tab-content");
-  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">&#9203; Lade&#8230;</div>';
+  const today=new Date().toISOString().slice(0,10);
+  el.innerHTML=`
+    <div style="margin-bottom:6px">
+      <input id="trm-search" type="text" placeholder="Suche nach Datum, Verein, Bezeichnung&#8230;"
+        oninput="renderTermineList()"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+    </div>
+    <label style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="trm-show-all" onchange="renderTermineList()"> Vergangene Termine anzeigen
+    </label>
+    <div id="trm-results"><div style="text-align:center;padding:40px;color:var(--text3)">&#9203; Lade&#8230;</div></div>`;
   try{
     const d=await(await fetch("/api/termine")).json();
     _admTermine=(d.termine||[]).map(t=>({...t,_vereinName:(d.labels||{})[t.verein]||t.verein}));
     _admTermine.sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
-    renderTermineList(el,"");
+    renderTermineList();
   }catch(e){
-    el.innerHTML='<div style="color:red;padding:20px">Fehler beim Laden</div>';
+    const r=document.getElementById("trm-results");
+    if(r)r.innerHTML='<div style="color:red;padding:20px">Fehler beim Laden</div>';
   }
 }
-function renderTermineList(el,filter){
-  const f=filter.toLowerCase();
-  const liste=f?_admTermine.filter(t=>
+function renderTermineList(){
+  const el=document.getElementById("trm-results");
+  if(!el)return;
+  const f=(document.getElementById("trm-search")?.value||"").toLowerCase();
+  const showAll=document.getElementById("trm-show-all")?.checked;
+  const today=new Date().toISOString().slice(0,10);
+  let liste=_admTermine;
+  if(!showAll)liste=liste.filter(t=>t.datum>=today);
+  if(f)liste=liste.filter(t=>
     t.bezeichnung.toLowerCase().includes(f)||
     t._vereinName.toLowerCase().includes(f)||
     t.datum.includes(f)
-  ):_admTermine;
-  const searchVal=filter.replace(/"/g,"&quot;");
+  );
   el.innerHTML=`
-    <div style="margin-bottom:8px">
-      <input type="text" placeholder="Suche nach Datum, Verein, Bezeichnung&#8230;" value="${searchVal}"
-        oninput="renderTermineList(document.getElementById('trm-tab-content'),this.value)"
-        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
-    </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${liste.length} Termin${liste.length===1?"":"e"}</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:6px">${liste.length} Termin${liste.length===1?"":"e"}</div>
     ${liste.map(t=>{
       const idx=_admTermine.indexOf(t);
       const noTime=!t.uhrzeit;
