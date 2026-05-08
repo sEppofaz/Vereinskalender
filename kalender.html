@@ -85,6 +85,8 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
 .ev-list{display:flex;flex-direction:column;gap:8px}
 .ev-card{background:var(--card);border-radius:var(--radius);padding:14px 16px;border-left:4px solid #999;box-shadow:0 2px 6px rgba(0,0,0,.08);position:relative}
 .ev-date{font-size:12px;color:var(--text2);margin-bottom:2px}
+.ev-date-sep{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:20px 2px 6px;display:block}
+.ev-date-sep:first-child{padding-top:6px}
 .ev-title{font-weight:600;font-size:15px;color:var(--text);line-height:1.3;padding-right:32px}
 .ev-ort{font-size:12px;color:var(--text3);margin-top:3px}
 .ev-badge{display:inline-block;font-size:11px;font-weight:600;border-radius:8px;padding:2px 7px;margin-top:5px}
@@ -1121,17 +1123,20 @@ function render(){
       `<div class="cta-card" style="margin-top:12px"><strong>Termine fehlen?</strong>Jahresprogramm als PDF an <a href="mailto:Vereinskalender@icloud.com">Vereinskalender@icloud.com</a> &ndash; wir k&uuml;mmern uns zeitnah.</div>`;
     return;
   }
+  let _lastDatum=null;
   el.innerHTML=out.map(t=>{
     const col=colors[t.verein]||"#777";
-    const uz=t.uhrzeit?` · ${t.uhrzeit} Uhr`:"";
+    const uz=t.uhrzeit?`${t.uhrzeit} Uhr`:"";
     const ort=t.ort?`<div class="ev-ort">&#128205; ${t.ort}</div>`:"";
     const badge=`<span class="ev-badge" style="background:${col}22;color:${col}">${labels[t.verein]||t.verein}</span>`;
     const idx=allT.indexOf(t);
     const isFav=favorites.some(f=>f.type==="verein"&&f.key===t.verein);
-    return `<div class="ev-card" style="border-left-color:${col}">
+    const sep=t.datum!==_lastDatum?`<div class="ev-date-sep">${fmt(t.datum)}</div>`:"";
+    _lastDatum=t.datum;
+    return sep+`<div class="ev-card" style="border-left-color:${col}">
       <button class="ev-cal" onclick="exportICS(${idx})" title="Zum Kalender hinzufügen">&#128197;</button>
       <button class="ev-fav" data-favk="${t.verein}" onclick="toggleFavVerein('${t.verein.replace(/'/g,"\\'")}','${(labels[t.verein]||t.verein).replace(/'/g,"\\'")}');this.textContent=favorites.some(f=>f.type==='verein'&&f.key==='${t.verein.replace(/'/g,"\\'")}')?' ⭐':'☆';this.style.opacity=favorites.some(f=>f.type==='verein'&&f.key==='${t.verein.replace(/'/g,"\\'")}')?' 1':'0.35'" title="Verein als Favorit" style="position:absolute;top:10px;right:50px;background:none;border:none;font-size:15px;cursor:pointer;padding:4px;border-radius:7px;line-height:1;opacity:${isFav?1:0.3};transition:opacity .15s">${isFav?"⭐":"☆"}</button>
-      <div class="ev-date">${fmt(t.datum)}${uz}</div>
+      ${uz?`<div class="ev-date">&#128336; ${uz}</div>`:""}
       <div class="ev-title" style="padding-right:74px">${t.bezeichnung}</div>
       ${ort}${badge}
     </div>`;
