@@ -392,7 +392,8 @@ def login():
 </form>
 <hr>
 <p class="hint"><a href="/verein/passwort-vergessen">Passwort vergessen?</a></p>
-<p class="hint">Noch kein Konto? <a href="/verein/register">Verein registrieren</a></p>"""
+<p class="hint">Noch kein Konto? <a href="/verein/register">Verein registrieren</a></p>
+<a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>"""
     return _page("Login", form)
 
 
