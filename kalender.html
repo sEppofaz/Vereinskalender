@@ -397,6 +397,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <button class="adm-tab" id="admbtn-ort" onclick="switchAdmTab('ort')">&#128205; Ortschaften</button>
       <button class="adm-tab" id="admbtn-ver" onclick="switchAdmTab('ver')">&#127974; Vereine</button>
       <button class="adm-tab" id="admbtn-acc" onclick="switchAdmTab('acc')">&#128101; Accounts<span id="acc-pending-badge" style="display:none;background:#ff3b30;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;vertical-align:middle;line-height:16px"></span></button>
+      <button class="adm-tab" id="admbtn-trm" onclick="switchAdmTab('trm')">&#128197; Termine</button>
     </div>
 
     <!-- Tab 1: Upload -->
@@ -470,6 +471,13 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <div id="acc-all-content">
       <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128197; Lade&#8230;</div>
     </div>
+    </div>
+
+    <!-- Tab 5: Termine -->
+    <div id="adm-tab-trm" style="display:none">
+      <div id="trm-tab-content">
+        <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128197; Lade&#8230;</div>
+      </div>
     </div>
 
     </div><!-- imp-content -->
@@ -1283,13 +1291,14 @@ document.querySelector(".content").addEventListener("scroll",function(){
 
 /* ── Admin-Tabs ── */
 function switchAdmTab(tab){
-  ["upload","ort","ver","acc"].forEach(t=>{
+  ["upload","ort","ver","acc","trm"].forEach(t=>{
     document.getElementById("adm-tab-"+t).style.display=t===tab?"":"none";
     document.getElementById("admbtn-"+t).classList.toggle("on",t===tab);
   });
   if(tab==="ort")loadOrtschaften();
   if(tab==="ver")loadVereine();
   if(tab==="acc"){loadPendingVereine();loadAllAccounts();}
+  if(tab==="trm")loadTermine();
 }
 
 async function loadPendingVereine(){
@@ -1608,6 +1617,115 @@ async function updateOrtschaft(name,action){
     body:JSON.stringify({name,action}),
   });
   if(res.ok)loadOrtschaften();
+}
+
+/* ── Termine-Tab (Admin) ── */
+let _admTermine=[];
+async function loadTermine(){
+  const el=document.getElementById("trm-tab-content");
+  el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">&#9203; Lade&#8230;</div>';
+  try{
+    const d=await(await fetch("/api/termine")).json();
+    _admTermine=(d.termine||[]).map(t=>({...t,_vereinName:(d.labels||{})[t.verein]||t.verein}));
+    _admTermine.sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
+    renderTermineList(el,"");
+  }catch(e){
+    el.innerHTML='<div style="color:red;padding:20px">Fehler beim Laden</div>';
+  }
+}
+function renderTermineList(el,filter){
+  const f=filter.toLowerCase();
+  const liste=f?_admTermine.filter(t=>
+    t.bezeichnung.toLowerCase().includes(f)||
+    t._vereinName.toLowerCase().includes(f)||
+    t.datum.includes(f)
+  ):_admTermine;
+  const searchVal=filter.replace(/"/g,"&quot;");
+  el.innerHTML=`
+    <div style="margin-bottom:8px">
+      <input type="text" placeholder="Suche nach Datum, Verein, Bezeichnung&#8230;" value="${searchVal}"
+        oninput="renderTermineList(document.getElementById('trm-tab-content'),this.value)"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${liste.length} Termin${liste.length===1?"":"e"}</div>
+    ${liste.map(t=>{
+      const idx=_admTermine.indexOf(t);
+      const noTime=!t.uhrzeit;
+      return `<div onclick="showTerminEdit(${idx})" style="display:flex;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;gap:10px">
+        <div style="min-width:90px;font-size:13px;font-weight:600;color:var(--text)">${t.datum}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.bezeichnung}</div>
+          <div style="font-size:12px;color:var(--text3)">${t._vereinName}</div>
+        </div>
+        <div style="font-size:13px;color:${noTime?"#f39c12":"var(--text2)"};white-space:nowrap">${noTime?"&#9888; keine Zeit":t.uhrzeit}</div>
+      </div>`;
+    }).join("")}
+  `;
+}
+function showTerminEdit(idx){
+  const t=_admTermine[idx];
+  const el=document.getElementById("trm-tab-content");
+  el.innerHTML=`
+    <div style="margin-bottom:12px">
+      <button onclick="loadTermine()" style="background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;padding:0">&#8592; Alle Termine</button>
+    </div>
+    <div class="filter-card" style="padding:14px 14px 16px">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Verein: <strong style="color:var(--text)">${t._vereinName}</strong></div>
+      ${_admFld("Datum (YYYY-MM-DD)","trm-datum","text",t.datum||"")}
+      ${_admFld("Uhrzeit (HH:MM)","trm-uhrzeit","time",t.uhrzeit||"")}
+      ${_admFld("Bezeichnung","trm-bezeichnung","text",t.bezeichnung||"")}
+      ${_admFld("Ort","trm-ort","text",t.ort||"")}
+      ${_admFld("Ortschaft","trm-ortschaft","text",t.ortschaft||"")}
+      <div id="trm-msg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button onclick="saveTermin(${idx})"
+          style="flex:1;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer">
+          Speichern
+        </button>
+        <button onclick="loadTermine()"
+          style="padding:10px 16px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);color:var(--text2);font-size:14px;cursor:pointer">
+          Abbrechen
+        </button>
+      </div>
+    </div>
+  `;
+}
+function _admFld(label,id,type,val){
+  const safe=String(val).replace(/"/g,"&quot;");
+  return `<div style="margin-bottom:10px">
+    <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
+    <input id="${id}" type="${type}" value="${safe}"
+      style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border2);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+  </div>`;
+}
+async function saveTermin(idx){
+  const t=_admTermine[idx];
+  const token=sessionStorage.getItem("ut")||"";
+  const msg=document.getElementById("trm-msg");
+  const changes={
+    datum:       document.getElementById("trm-datum").value.trim(),
+    uhrzeit:     document.getElementById("trm-uhrzeit").value.trim(),
+    bezeichnung: document.getElementById("trm-bezeichnung").value.trim(),
+    ort:         document.getElementById("trm-ort").value.trim(),
+    ortschaft:   document.getElementById("trm-ortschaft").value.trim(),
+  };
+  if(!changes.datum||!changes.bezeichnung){msg.style.color="red";msg.textContent="Datum und Bezeichnung sind Pflichtfelder.";return;}
+  msg.style.color="var(--text3)";msg.textContent="Speichere…";
+  try{
+    const r=await fetch("/api/termine",{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json","X-Upload-Token":token},
+      body:JSON.stringify({verein_key:t.verein,datum:t.datum,bezeichnung:t.bezeichnung,changes}),
+    });
+    const d=await r.json();
+    if(d.ok){
+      msg.style.color="green";msg.textContent="✅ Gespeichert";
+      Object.assign(_admTermine[idx],changes);
+      setTimeout(()=>loadTermine(),900);
+    }else{
+      msg.style.color="red";msg.textContent="❌ "+(d.error||"Fehler");
+    }
+  }catch(e){msg.style.color="red";msg.textContent="❌ Netzwerkfehler";}
 }
 
 /* ── Ortschaften-Bestätigungs-Modal ── */

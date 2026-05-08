@@ -487,6 +487,37 @@ def api_termine():
     )
 
 
+@kalender_bp.route("/api/termine", methods=["PATCH"])
+def api_termine_patch():
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+    body = request.get_json(force=True, silent=True) or {}
+    verein_key = body.get("verein_key", "")
+    old_datum = body.get("datum", "")
+    old_bezeichnung = body.get("bezeichnung", "")
+    changes = {k: v for k, v in body.get("changes", {}).items()
+               if k in {"datum", "uhrzeit", "ort", "ortschaft", "bezeichnung"}}
+    if not verein_key or not old_datum or not old_bezeichnung:
+        return json.dumps({"error": "verein_key, datum und bezeichnung erforderlich"}), 400, {"Content-Type": "application/json"}
+    found = [False]
+    def mutator(data):
+        liste = data.get(verein_key, [])
+        for t in liste:
+            if t.get("datum") == old_datum and t.get("bezeichnung") == old_bezeichnung:
+                t.update(changes)
+                found[0] = True
+                break
+        if found[0] and "datum" in changes:
+            data[verein_key] = sorted(liste, key=lambda x: (x.get("datum", ""), x.get("uhrzeit", "")))
+    from shared.kalender_store import KalenderStore
+    KalenderStore.update(mutator)
+    if not found[0]:
+        return json.dumps({"error": "Termin nicht gefunden"}), 404, {"Content-Type": "application/json"}
+    log(f"Termin bearbeitet: {verein_key} / {old_datum} / {old_bezeichnung}")
+    return json.dumps({"ok": True}, ensure_ascii=False), 200, {"Content-Type": "application/json; charset=utf-8"}
+
+
 @kalender_bp.route("/api/ical")
 def api_ical():
     datum   = request.args.get("d", "").strip()
