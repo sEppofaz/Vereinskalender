@@ -106,14 +106,15 @@ def kalender_bot_webhook():
         labels = _load_verein_labels()
 
         if text in ("/start", "/hilfe", "/help"):
-            _bot_send(chat_id,
+            _bot_send_inline(chat_id,
                 "👋 <b>Willkommen beim Vereinskalender-Bot!</b>\n\n"
-                "Ich erinnere dich automatisch einen Tag vor Terminen deiner Lieblingsvereine.\n\n"
-                "📌 <b>Befehle:</b>\n"
-                "/abo – Vereine auswählen\n"
-                "/meineabos – Meine Abonnements anzeigen\n"
-                "/stop – Alle Abonnements löschen\n\n"
-                "Tipp: Einfach /abo tippen und Vereine antippen!"
+                "Ich schicke dir jeden Abend um <b>18:00 Uhr</b> eine kurze Nachricht, "
+                "wenn einer deiner Vereine am nächsten Tag einen Termin hat – "
+                "damit du nichts verpasst.\n\n"
+                "👇 Tippe auf <b>Vereine auswählen</b> und wähle die Vereine aus, "
+                "für die du Erinnerungen erhalten möchtest.",
+                [[{"text": "🏘️ Vereine auswählen", "callback_data": "vk_start_abo"}],
+                 [{"text": "📋 Meine Abonnements", "callback_data": "vk_meineabos"}]]
             )
 
         elif text == "/abo":
@@ -168,7 +169,38 @@ def kalender_bot_webhook():
         cb_data = callback_query.get("data", "")
         cb_chat = str(callback_query.get("from", {}).get("id", ""))
 
-        if cb_data.startswith("vk_abo:"):
+        if cb_data in ("vk_start_abo", "vk_abo_oeffnen"):
+            labels = _load_verein_labels()
+            if not labels:
+                _bot_answer_callback(cb_id, "⚠️ Noch keine Vereine im Kalender")
+            else:
+                _bot_answer_callback(cb_id)
+                keyboard = _verein_auswahl_keyboard(cb_chat, labels)
+                _bot_send_inline(cb_chat,
+                    "🏘️ <b>Welche Vereine möchtest du abonnieren?</b>\n"
+                    "Tippe auf einen Verein um ihn ab-/anzumelden.\n"
+                    "✅ = bereits abonniert",
+                    keyboard
+                )
+
+        elif cb_data == "vk_meineabos":
+            abos = tg_get_subscriptions(cb_chat)
+            labels = _load_verein_labels()
+            _bot_answer_callback(cb_id)
+            if not abos:
+                _bot_send(cb_chat,
+                    "Du hast noch keine Abonnements.\n"
+                    "Tippe auf /abo um Vereine auszuwählen."
+                )
+            else:
+                namen = [labels.get(k, k) for k in abos]
+                liste = "\n".join(f"• {n}" for n in namen)
+                _bot_send(cb_chat,
+                    f"📋 <b>Deine Abonnements ({len(abos)}):</b>\n\n{liste}\n\n"
+                    "Abos ändern: /abo · Alle löschen: /stop"
+                )
+
+        elif cb_data.startswith("vk_abo:"):
             verein_key = cb_data.split(":", 1)[1]
             labels = _load_verein_labels()
             verein_name = labels.get(verein_key, verein_key)
