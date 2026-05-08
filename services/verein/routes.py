@@ -149,7 +149,8 @@ def dashboard(user):
 {hilfe_block}
 <hr>
 <a class="btn btn-sec" href="/verein/passwort" style="margin-top:.5rem">🔑 Passwort ändern</a>
-<a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>"""
+<a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>
+<p class="hint" style="margin-top:1rem"><a href="/verein/datenschutz">Datenschutzerklärung</a> · <a href="/verein/nutzungsbedingungen">Nutzungsbedingungen</a></p>"""
     return _page(f"Dashboard – {verein_name}", body)
 
 
@@ -765,7 +766,7 @@ def datenschutz():
 </div>
 <div class="card">
 <h2 style="font-size:1rem;margin-top:0">4. Speicherdauer</h2>
-<p>Accounts werden auf Anfrage oder bei dauerhafter Inaktivität (> 2 Jahre) gelöscht. Eingetragene Termine werden nach Ende des jeweiligen Kalenderjahres bereinigt.</p>
+<p>Accounts werden auf Anfrage gelöscht. Schreib dazu an <a href="mailto:Vereinskalender@icloud.com">Vereinskalender@icloud.com</a>. Eingetragene Termine werden nach Ende des jeweiligen Kalenderjahres bereinigt.</p>
 </div>
 <div class="card">
 <h2 style="font-size:1rem;margin-top:0">5. E-Mail-Dienst</h2>
@@ -775,7 +776,7 @@ def datenschutz():
 <h2 style="font-size:1rem;margin-top:0">6. Rechte</h2>
 <p>Auskunft, Berichtigung, Löschung deiner Daten: Schreib an <a href="mailto:Vereinskalender@icloud.com">Vereinskalender@icloud.com</a>. Beschwerderecht bei der zuständigen Datenschutz-Aufsichtsbehörde.</p>
 </div>
-<a href="/verein/register" style="color:#aeaeb2;font-size:.85rem">← Zurück</a>"""
+{_BACK_DASH}"""
     return _page("Datenschutzerklärung", body)
 
 
@@ -785,7 +786,7 @@ def nutzungsbedingungen():
 <p style="color:#aeaeb2;font-size:.85rem">Stand: Mai 2026</p>
 <div class="card">
 <h2 style="font-size:1rem;margin-top:0">1. Nutzung</h2>
-<p>Der Vereinskalender vereinskalender.online dient der nicht-kommerziellen Veröffentlichung von Vereinsterminen in der Region Postau/Bayerbach. Die Nutzung ist kostenlos.</p>
+<p>Der Vereinskalender vereinskalender.online dient der nicht-kommerziellen Veröffentlichung von Vereinsterminen. Die Nutzung ist kostenlos.</p>
 </div>
 <div class="card">
 <h2 style="font-size:1rem;margin-top:0">2. Registrierung</h2>
@@ -799,7 +800,7 @@ def nutzungsbedingungen():
 <h2 style="font-size:1rem;margin-top:0">4. Kündigung</h2>
 <p>Der Betreiber kann Accounts bei Verstoß gegen diese Bedingungen ohne Vorankündigung sperren oder löschen.</p>
 </div>
-<a href="/verein/register" style="color:#aeaeb2;font-size:.85rem">← Zurück</a>"""
+{_BACK_DASH}"""
     return _page("Nutzungsbedingungen", body)
 
 

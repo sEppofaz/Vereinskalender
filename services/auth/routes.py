@@ -393,7 +393,8 @@ def login():
 <hr>
 <p class="hint"><a href="/verein/passwort-vergessen">Passwort vergessen?</a></p>
 <p class="hint">Noch kein Konto? <a href="/verein/register">Verein registrieren</a></p>
-<a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>"""
+<a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>
+<p class="hint" style="margin-top:1rem"><a href="/verein/datenschutz">Datenschutzerklärung</a> · <a href="/verein/nutzungsbedingungen">Nutzungsbedingungen</a></p>"""
     return _page("Login", form)
 
 
