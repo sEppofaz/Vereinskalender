@@ -149,7 +149,7 @@ def dashboard(user):
 {hilfe_block}
 <hr>
 <a class="btn btn-sec" href="/verein/passwort" style="margin-top:.5rem">🔑 Passwort ändern</a>
-<a href="/" style="display:block;text-align:center;color:#aeaeb2;font-size:.85rem;margin-top:1rem">← Zum Kalender</a>"""
+<a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>"""
     return _page(f"Dashboard – {verein_name}", body)
 
 

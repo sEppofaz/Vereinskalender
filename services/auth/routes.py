@@ -206,7 +206,7 @@ def register():
 <p>Wir haben dir eine E-Mail an <strong>{email}</strong> geschickt. Bitte bestätige deine Adresse.
 Danach prüft der Administrator deine Anfrage (in der Regel innerhalb eines Tages).</p>
 <div class="spam-hint">📬 Keine E-Mail erhalten? Bitte auch im <strong>Spam-Ordner</strong> nachsehen.</div>
-<a class="btn btn-sec" href="/" style="margin-top:1rem">← Zum Kalender</a>"""
+<a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>"""
             return _page("Registrierung eingegangen", body)
 
     rubrik_opts = "".join(
@@ -269,7 +269,7 @@ def verify_email():
             "UPDATE vk_users SET email_verified=1, verify_token=NULL, verify_token_expires=NULL WHERE id=?",
             (row["id"],),
         )
-    body = f'<p class="ok">✅ E-Mail-Adresse bestätigt!</p><p>Dein Konto wird nun vom Administrator geprüft. Du erhältst eine E-Mail sobald es freigeschaltet wurde.</p><a class="btn btn-sec" href="/">← Zum Kalender</a>'
+    body = f'<p class="ok">✅ E-Mail-Adresse bestätigt!</p><p>Dein Konto wird nun vom Administrator geprüft. Du erhältst eine E-Mail sobald es freigeschaltet wurde.</p><a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>'
     return _page("Bestätigt", body)
 
 
