@@ -8,6 +8,7 @@ from pathlib import Path
 
 from flask import Blueprint, Response, request
 
+from shared.vk_db import db_conn
 from shared.kalender_core import (
     GOTTESDIENSTE_FILE,
     ICON_192_FILE,
@@ -450,11 +451,36 @@ def api_termine():
         except Exception as e:
             log(f"⚠️  Gottesdienste in API: {e}")
 
-    meta        = raw.get("_meta", {})
+    json_meta   = raw.get("_meta", {})
     ortschaften = raw.get("_ortschaften", {"whitelist": [], "blacklist": []})
-    rubriken    = {k: _get_rubrik(k, v, meta.get(k, {})) for k, v in labels.items()}
+
+    # DB-Meta laden (Vereinsadmin-Selbstverwaltung, Prio 2); JSON überschreibt (Superadmin, Prio 1)
+    try:
+        with db_conn() as conn:
+            db_rows = conn.execute(
+                """SELECT verein_key, rubrik, heimatort, plz, gemeinde, landkreis
+                   FROM vereine_accounts WHERE verein_key IS NOT NULL"""
+            ).fetchall()
+    except Exception:
+        db_rows = []
+    db_meta = {}
+    for row in db_rows:
+        entry = {}
+        for col in ("rubrik", "heimatort", "plz", "gemeinde", "landkreis"):
+            if row[col]:
+                entry[col] = row[col]
+        if entry:
+            db_meta[row["verein_key"]] = entry
+
+    merged_meta = {}
+    for key in set(list(json_meta.keys()) + list(db_meta.keys())):
+        m = {**db_meta.get(key, {}), **json_meta.get(key, {})}
+        if m:
+            merged_meta[key] = m
+
+    rubriken    = {k: _get_rubrik(k, v, merged_meta.get(k, {})) for k, v in labels.items()}
     return (
-        json.dumps({"labels": labels, "termine": termine, "meta": meta,
+        json.dumps({"labels": labels, "termine": termine, "meta": merged_meta,
                     "ortschaften": ortschaften, "rubriken": rubriken}, ensure_ascii=False),
         200,
         {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache, must-revalidate"},

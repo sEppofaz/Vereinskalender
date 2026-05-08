@@ -129,10 +129,15 @@ def init_db():
                 PRIMARY KEY (verein_id, datum)
             );
         """)
-        # Fallback für sehr alte Installs ohne name/telefon
+        # Migrations: neue Spalten (scheitern lautlos wenn bereits vorhanden)
         for col_sql in [
             "ALTER TABLE vk_users ADD COLUMN name TEXT",
             "ALTER TABLE vk_users ADD COLUMN telefon TEXT",
+            "ALTER TABLE vereine_accounts ADD COLUMN rubrik TEXT NOT NULL DEFAULT 'Verein'",
+            "ALTER TABLE vereine_accounts ADD COLUMN heimatort TEXT",
+            "ALTER TABLE vereine_accounts ADD COLUMN plz TEXT",
+            "ALTER TABLE vereine_accounts ADD COLUMN gemeinde TEXT",
+            "ALTER TABLE vereine_accounts ADD COLUMN landkreis TEXT",
         ]:
             try:
                 conn.execute(col_sql)

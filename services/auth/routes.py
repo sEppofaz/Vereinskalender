@@ -9,6 +9,7 @@ import bcrypt
 from flask import Blueprint, make_response, redirect, request
 
 from shared.vk_db import SESSION_TIMEOUT_HOURS, create_session, db_conn, delete_session, get_session_user, init_db
+from shared.kalender_core import lookup_plz
 from shared.vk_mail import (
     send_rejected_email,
     send_reset_email,
@@ -22,6 +23,7 @@ auth_bp = Blueprint("auth", __name__)
 UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "")
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+RUBRIKEN = ["Verein", "Pfarrei", "Kunst und Kultur", "Sonstiges"]
 
 # Kurzlebiger Pre-Auth-Store für Vereinsauswahl bei mehreren Accounts pro E-Mail
 # token → ([(user_id, verein_name)], expires)
@@ -114,11 +116,20 @@ def _valid_email(email: str) -> bool:
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
 
 
-def _telegram_approve_msg(verein_id: int, verein_name: str, email: str) -> None:
+def _telegram_approve_msg(verein_id: int, verein_name: str, email: str,
+                           rubrik: str = "", heimatort: str = "", telefon: str = "") -> None:
+    lines = [f"🏛 Neuer Verein wartet auf Freigabe:\n<b>{verein_name}</b>"]
+    if rubrik:
+        lines.append(f"Rubrik: {rubrik}")
+    if heimatort:
+        lines.append(f"Ort: {heimatort}")
+    lines.append(f"E-Mail: {email}")
+    if telefon:
+        lines.append(f"Telefon: {telefon}")
     try:
         send_telegram_inline(
             os.environ.get("CHAT_ID", ""),
-            f"🏛 Neuer Verein wartet auf Freigabe:\n<b>{verein_name}</b>\nKontakt: {email}",
+            "\n".join(lines),
             [
                 [
                     {"text": "✅ Freigeben", "callback_data": f"verein_approve:{verein_id}"},
@@ -135,17 +146,30 @@ def _telegram_approve_msg(verein_id: int, verein_name: str, email: str) -> None:
 @auth_bp.route("/verein/register", methods=["GET", "POST"])
 def register():
     error = ""
+    form_data: dict = {}
     if request.method == "POST":
         verein_name = request.form.get("verein_name", "").strip()
-        email = request.form.get("email", "").strip().lower()
-        pw = request.form.get("password", "")
-        pw2 = request.form.get("password2", "")
-        sv = request.form.get("selbstverpflichtung", "")
+        email       = request.form.get("email", "").strip().lower()
+        pw          = request.form.get("password", "")
+        pw2         = request.form.get("password2", "")
+        sv          = request.form.get("selbstverpflichtung", "")
+        rubrik      = request.form.get("rubrik", "").strip()
+        heimatort   = request.form.get("heimatort", "").strip()
+        plz         = request.form.get("plz", "").strip()
+        telefon     = request.form.get("telefon", "").strip()
+        form_data   = dict(verein_name=verein_name, email=email, rubrik=rubrik,
+                           heimatort=heimatort, plz=plz, telefon=telefon)
 
         if not verein_name or len(verein_name) < 3:
             error = "Bitte einen Vereinsnamen mit mindestens 3 Zeichen eingeben."
         elif not _valid_email(email):
             error = "Bitte eine gültige E-Mail-Adresse eingeben."
+        elif rubrik not in RUBRIKEN:
+            error = "Bitte eine gültige Rubrik auswählen."
+        elif not heimatort or len(heimatort) < 2:
+            error = "Bitte den Heimatort des Vereins angeben."
+        elif plz and not re.match(r"^\d{5}$", plz):
+            error = "PLZ muss 5 Ziffern haben (z.B. 83308)."
         elif len(pw) < 8:
             error = "Passwort muss mindestens 8 Zeichen haben."
         elif pw != pw2:
@@ -153,39 +177,61 @@ def register():
         elif not sv:
             error = "Bitte die Selbstverpflichtungserklärung bestätigen."
         else:
+            gemeinde = landkreis = ""
+            if plz:
+                geo = lookup_plz(plz)
+                gemeinde  = geo.get("gemeinde", "")
+                landkreis = geo.get("landkreis", "")
             with db_conn() as conn:
                 verein_row = conn.execute(
-                    "INSERT INTO vereine_accounts (verein_name, selbstverpflichtung) VALUES (?,?) RETURNING id",
-                    (verein_name, 1),
+                    """INSERT INTO vereine_accounts
+                       (verein_name, selbstverpflichtung, rubrik, heimatort, plz, gemeinde, landkreis)
+                       VALUES (?,?,?,?,?,?,?) RETURNING id""",
+                    (verein_name, 1, rubrik, heimatort, plz or None, gemeinde or None, landkreis or None),
                 ).fetchone()
                 verein_id = verein_row["id"]
-                token = secrets.token_urlsafe(32)
+                token   = secrets.token_urlsafe(32)
                 expires = (datetime.utcnow() + timedelta(hours=24)).isoformat()
                 conn.execute(
                     """INSERT INTO vk_users
-                       (email, password_hash, verein_id, role, verify_token, verify_token_expires)
-                       VALUES (?,?,?,?,?,?)""",
-                    (email, _hash_pw(pw), verein_id, "admin", token, expires),
+                       (email, password_hash, verein_id, role, telefon, verify_token, verify_token_expires)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (email, _hash_pw(pw), verein_id, "admin", telefon or None, token, expires),
                 )
-            if not error:
-                send_verify_email(email, token)
-                _telegram_approve_msg(verein_id, verein_name, email)
-                body = f"""
+            send_verify_email(email, token)
+            _telegram_approve_msg(verein_id, verein_name, email,
+                                  rubrik=rubrik, heimatort=heimatort, telefon=telefon)
+            body = f"""
 <p class="ok">✅ Registrierung eingegangen!</p>
 <p>Wir haben dir eine E-Mail an <strong>{email}</strong> geschickt. Bitte bestätige deine Adresse.
 Danach prüft der Administrator deine Anfrage (in der Regel innerhalb eines Tages).</p>
 <div class="spam-hint">📬 Keine E-Mail erhalten? Bitte auch im <strong>Spam-Ordner</strong> nachsehen.</div>
 <a class="btn btn-sec" href="/" style="margin-top:1rem">← Zum Kalender</a>"""
-                return _page("Registrierung eingegangen", body)
+            return _page("Registrierung eingegangen", body)
 
+    rubrik_opts = "".join(
+        f'<option value="{r}"{" selected" if form_data.get("rubrik") == r else ""}>{r}</option>'
+        for r in RUBRIKEN
+    )
     form = f"""
 <p style="color:#aeaeb2;font-size:.9rem">Trage deinen Verein im Vereinskalender ein.</p>
 {'<p class="err">'+error+'</p>' if error else ''}
 <form method="post" autocomplete="on">
   <label>Vereinsname</label>
-  <input name="verein_name" type="text" required autocomplete="organization" placeholder="z.B. FF Musterdorf">
+  <input name="verein_name" type="text" required autocomplete="organization" placeholder="z.B. FF Musterdorf" value="{form_data.get('verein_name', '')}">
+  <label>Rubrik</label>
+  <select name="rubrik" required>
+    <option value="">– bitte wählen –</option>
+    {rubrik_opts}
+  </select>
+  <label>Heimatort</label>
+  <input name="heimatort" type="text" required placeholder="z.B. Musterdorf" value="{form_data.get('heimatort', '')}">
+  <label>PLZ <span class="hint">(optional – für automatische Ortszuordnung)</span></label>
+  <input name="plz" type="text" inputmode="numeric" maxlength="5" placeholder="z.B. 83308" value="{form_data.get('plz', '')}">
   <label>E-Mail (Ansprechpartner)</label>
-  <input name="email" type="text" inputmode="email" autocorrect="off" autocapitalize="none" required autocomplete="email" placeholder="vorstand@beispiel.de">
+  <input name="email" type="text" inputmode="email" autocorrect="off" autocapitalize="none" required autocomplete="email" placeholder="vorstand@beispiel.de" value="{form_data.get('email', '')}">
+  <label>Telefon Ansprechpartner <span class="hint">(optional – für Rückfragen bei der Freigabe)</span></label>
+  <input name="telefon" type="tel" autocomplete="tel" placeholder="z.B. 0172 1234567" value="{form_data.get('telefon', '')}">
   <label>Passwort <span class="hint">(mind. 8 Zeichen)</span></label>
   <input name="password" type="password" required autocomplete="new-password">
   <label>Passwort wiederholen</label>

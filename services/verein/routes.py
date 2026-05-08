@@ -2,6 +2,7 @@ import html
 import io
 import json
 import os
+import re
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -11,7 +12,7 @@ from flask import Blueprint, make_response, redirect, request
 from shared.kalender_store import KalenderStore
 from shared.kalender_core import (
     VEREINSTERMINE_FILE, _HEIC_SUPPORTED, _do_save_import,
-    import_pdf_bytes, parse_excel_bytes,
+    import_pdf_bytes, lookup_plz, parse_excel_bytes,
 )
 from shared.vk_db import (
     db_conn, get_session_user, log_audit,
@@ -23,6 +24,7 @@ verein_bp = Blueprint("verein", __name__)
 
 _BACK_DASH = '<a class="btn btn-sec" href="/verein/dashboard" style="margin-top:.75rem">← Zurück</a>'
 _UPLOAD_LIMIT = 3
+RUBRIKEN = ["Verein", "Pfarrei", "Kunst und Kultur", "Sonstiges"]
 
 
 def _quota_remaining(verein_id: int) -> int:
@@ -73,6 +75,7 @@ def dashboard(user):
     neu_btn = ""
     upload_btn = ""
     mitglieder_link = ""
+    profil_link = ""
     if user["role"] == "admin":
         neu_btn = '<a class="btn" href="/verein/termine/neu">+ Neuer Termin</a>'
         remaining = _quota_remaining(user["verein_id"])
@@ -82,6 +85,7 @@ def dashboard(user):
             f'📤 Terminplan hochladen ({used}/{_UPLOAD_LIMIT} heute)</a>'
         )
         mitglieder_link = '<a class="btn btn-sec" href="/verein/mitglieder" style="margin-top:.5rem">👥 Mitglieder</a>'
+        profil_link = '<a class="btn btn-sec" href="/verein/profil" style="margin-top:.5rem">⚙️ Vereinsprofil</a>'
 
     upload_ok = request.args.get("upload_ok", "")
     upload_banner = ""
@@ -141,6 +145,7 @@ def dashboard(user):
 <h2 style="font-size:1rem;margin:1rem 0 .5rem">Termine ({len(termine)})</h2>
 {rows}
 {mitglieder_link}
+{profil_link}
 {hilfe_block}
 <hr>
 <a class="btn btn-sec" href="/verein/passwort" style="margin-top:.5rem">🔑 Passwort ändern</a>
@@ -796,3 +801,111 @@ def nutzungsbedingungen():
 </div>
 <a href="/verein/register" style="color:#aeaeb2;font-size:.85rem">← Zurück</a>"""
     return _page("Nutzungsbedingungen", body)
+
+
+# ── Vereinsprofil ─────────────────────────────────────────────────────────────
+
+@verein_bp.route("/verein/profil", methods=["GET", "POST"])
+@require_verein_login
+def verein_profil(user):
+    if user["role"] != "admin":
+        return redirect("/verein/dashboard")
+
+    error = ok = ""
+
+    with db_conn() as conn:
+        va = conn.execute(
+            "SELECT verein_name, rubrik, heimatort, plz, gemeinde, landkreis FROM vereine_accounts WHERE id=?",
+            (user["verein_id"],),
+        ).fetchone()
+        usr = conn.execute(
+            "SELECT telefon FROM vk_users WHERE id=?", (user["id"],)
+        ).fetchone()
+
+    if not va:
+        return redirect("/verein/dashboard")
+
+    verein_name = va["verein_name"]
+    rubrik      = va["rubrik"] or "Verein"
+    heimatort   = va["heimatort"] or ""
+    plz         = va["plz"] or ""
+    gemeinde    = va["gemeinde"] or ""
+    landkreis   = va["landkreis"] or ""
+    telefon     = usr["telefon"] if usr else ""
+
+    if request.method == "POST":
+        new_name      = request.form.get("verein_name", "").strip()
+        new_rubrik    = request.form.get("rubrik", "").strip()
+        new_heimatort = request.form.get("heimatort", "").strip()
+        new_plz       = request.form.get("plz", "").strip()
+        new_telefon   = request.form.get("telefon", "").strip()
+
+        if not new_name or len(new_name) < 3:
+            error = "Vereinsname muss mindestens 3 Zeichen haben."
+        elif new_rubrik not in RUBRIKEN:
+            error = "Bitte eine gültige Rubrik wählen."
+        elif not new_heimatort or len(new_heimatort) < 2:
+            error = "Bitte einen Heimatort angeben."
+        elif new_plz and not re.match(r"^\d{5}$", new_plz):
+            error = "PLZ muss 5 Ziffern haben."
+        else:
+            new_gemeinde = new_landkreis = ""
+            if new_plz and new_plz != plz:
+                geo = lookup_plz(new_plz)
+                new_gemeinde  = geo.get("gemeinde", "")
+                new_landkreis = geo.get("landkreis", "")
+            elif not new_plz:
+                new_gemeinde = new_landkreis = ""
+            else:
+                new_gemeinde  = gemeinde
+                new_landkreis = landkreis
+
+            with db_conn() as conn:
+                conn.execute(
+                    """UPDATE vereine_accounts
+                       SET verein_name=?, rubrik=?, heimatort=?, plz=?, gemeinde=?, landkreis=?
+                       WHERE id=?""",
+                    (new_name, new_rubrik, new_heimatort,
+                     new_plz or None, new_gemeinde or None, new_landkreis or None,
+                     user["verein_id"]),
+                )
+                conn.execute(
+                    "UPDATE vk_users SET telefon=? WHERE id=?",
+                    (new_telefon or None, user["id"]),
+                )
+            verein_name = new_name
+            rubrik      = new_rubrik
+            heimatort   = new_heimatort
+            plz         = new_plz
+            gemeinde    = new_gemeinde
+            landkreis   = new_landkreis
+            telefon     = new_telefon
+            ok = "✅ Profil gespeichert."
+
+    rubrik_opts = "".join(
+        f'<option value="{r}"{" selected" if rubrik == r else ""}>{r}</option>'
+        for r in RUBRIKEN
+    )
+    geo_hint = f'<p class="hint">{gemeinde}, {landkreis}</p>' if gemeinde else ""
+
+    body = f"""
+{'<p class="err">'+error+'</p>' if error else ''}
+{'<p class="ok">'+ok+'</p>' if ok else ''}
+<form method="post">
+  <label>Vereinsname</label>
+  <input name="verein_name" type="text" required value="{html.escape(verein_name)}">
+  <label>Rubrik</label>
+  <select name="rubrik" required>
+    {rubrik_opts}
+  </select>
+  <label>Heimatort</label>
+  <input name="heimatort" type="text" required placeholder="z.B. Musterdorf" value="{html.escape(heimatort)}">
+  <label>PLZ <span class="hint">(optional)</span></label>
+  <input name="plz" type="text" inputmode="numeric" maxlength="5" placeholder="z.B. 83308" value="{html.escape(plz)}">
+  {geo_hint}
+  <label>Telefon Ansprechpartner <span class="hint">(optional)</span></label>
+  <input name="telefon" type="tel" autocomplete="tel" placeholder="z.B. 0172 1234567" value="{html.escape(telefon or '')}">
+  <button class="btn" type="submit">Speichern</button>
+</form>
+{_BACK_DASH}"""
+    return _page("Vereinsprofil", body)
