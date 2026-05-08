@@ -753,7 +753,7 @@ def datenschutz():
 <p style="color:#aeaeb2;font-size:.85rem">Stand: Mai 2026</p>
 <div class="card">
 <h2 style="font-size:1rem;margin-top:0">1. Verantwortlicher</h2>
-<p>Josef Fischer, [Adresse], josef.jf.fischer@me.com</p>
+<p>Josef Fischer, Hölskofen 13, 84092 Bayerbach b. Ergoldsbach · <a href="mailto:Vereinskalender@icloud.com">Vereinskalender@icloud.com</a></p>
 </div>
 <div class="card">
 <h2 style="font-size:1rem;margin-top:0">2. Erhobene Daten</h2>
@@ -773,7 +773,7 @@ def datenschutz():
 </div>
 <div class="card">
 <h2 style="font-size:1rem;margin-top:0">6. Rechte</h2>
-<p>Auskunft, Berichtigung, Löschung deiner Daten: Schreib an josef.jf.fischer@me.com. Beschwerderecht bei der zuständigen Datenschutz-Aufsichtsbehörde.</p>
+<p>Auskunft, Berichtigung, Löschung deiner Daten: Schreib an <a href="mailto:Vereinskalender@icloud.com">Vereinskalender@icloud.com</a>. Beschwerderecht bei der zuständigen Datenschutz-Aufsichtsbehörde.</p>
 </div>
 <a href="/verein/register" style="color:#aeaeb2;font-size:.85rem">← Zurück</a>"""
     return _page("Datenschutzerklärung", body)
