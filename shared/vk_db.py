@@ -128,6 +128,13 @@ def init_db():
                 count     INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (verein_id, datum)
             );
+
+            CREATE TABLE IF NOT EXISTS tg_subscriptions (
+                chat_id    TEXT NOT NULL,
+                verein_key TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (chat_id, verein_key)
+            );
         """)
         # Migrations: neue Spalten (scheitern lautlos wenn bereits vorhanden)
         for col_sql in [
@@ -207,3 +214,60 @@ def increment_upload_quota(verein_id: int, datum: str):
                ON CONFLICT(verein_id, datum) DO UPDATE SET count = count + 1""",
             (verein_id, datum),
         )
+
+
+def tg_subscribe(chat_id: str, verein_key: str) -> bool:
+    with db_conn() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM tg_subscriptions WHERE chat_id=? AND verein_key=?",
+            (chat_id, verein_key)
+        ).fetchone()
+        if existing:
+            return False
+        conn.execute(
+            "INSERT INTO tg_subscriptions (chat_id, verein_key) VALUES (?,?)",
+            (chat_id, verein_key)
+        )
+        return True
+
+
+def tg_unsubscribe(chat_id: str, verein_key: str) -> bool:
+    with db_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM tg_subscriptions WHERE chat_id=? AND verein_key=?",
+            (chat_id, verein_key)
+        )
+        return result.rowcount > 0
+
+
+def tg_unsubscribe_all(chat_id: str) -> int:
+    with db_conn() as conn:
+        result = conn.execute(
+            "DELETE FROM tg_subscriptions WHERE chat_id=?", (chat_id,)
+        )
+        return result.rowcount
+
+
+def tg_get_subscriptions(chat_id: str) -> list[str]:
+    with db_conn() as conn:
+        rows = conn.execute(
+            "SELECT verein_key FROM tg_subscriptions WHERE chat_id=? ORDER BY verein_key",
+            (chat_id,)
+        ).fetchall()
+        return [r["verein_key"] for r in rows]
+
+
+def tg_get_subscribers_for_verein(verein_key: str) -> list[str]:
+    with db_conn() as conn:
+        rows = conn.execute(
+            "SELECT chat_id FROM tg_subscriptions WHERE verein_key=?", (verein_key,)
+        ).fetchall()
+        return [r["chat_id"] for r in rows]
+
+
+def tg_get_all_subscriptions() -> list[dict]:
+    with db_conn() as conn:
+        rows = conn.execute(
+            "SELECT chat_id, verein_key FROM tg_subscriptions"
+        ).fetchall()
+        return [dict(r) for r in rows]
