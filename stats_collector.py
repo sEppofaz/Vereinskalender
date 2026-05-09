@@ -68,10 +68,11 @@ def _anon_ip(raw: str) -> str:
         return "unknown"
 
 
-def collect_day(target: date, max_files: int = 60) -> tuple[int, int]:
-    """Liest nginx-Logs und zählt Views + unique Besucher für einen Tag."""
+def collect_day(target: date, max_files: int = 60) -> tuple[int, int, dict[int, int]]:
+    """Liest nginx-Logs, zählt Views + unique Besucher + stündliche Views für einen Tag."""
     v = 0
     ips: set[str] = set()
+    hourly: dict[int, int] = {}
     ip_pat = re.compile(r'^(\S+)')
     for log_file in _log_files(max_files):
         for line in _read_lines(log_file):
@@ -80,15 +81,17 @@ def collect_day(target: date, max_files: int = 60) -> tuple[int, int]:
             dt = _parse_dt(line)
             if dt is None:
                 continue
-            if dt.astimezone(BERLIN).date() != target:
+            dt_berlin = dt.astimezone(BERLIN)
+            if dt_berlin.date() != target:
                 continue
             m = ip_pat.match(line)
             ips.add(_anon_ip(m.group(1)) if m else "unknown")
             v += 1
-    return v, len(ips)
+            hourly[dt_berlin.hour] = hourly.get(dt_berlin.hour, 0) + 1
+    return v, len(ips), hourly
 
 
-def save_day(target: date, views: int, unique: int):
+def save_day(target: date, views: int, unique: int, hourly: dict[int, int]):
     with db_conn() as conn:
         conn.execute(
             """INSERT INTO page_stats (datum, views, unique_visitors) VALUES (?,?,?)
@@ -97,6 +100,12 @@ def save_day(target: date, views: int, unique: int):
                  unique_visitors=excluded.unique_visitors""",
             (target.isoformat(), views, unique),
         )
+        for stunde, h_views in hourly.items():
+            conn.execute(
+                """INSERT INTO page_stats_hourly (datum, stunde, views) VALUES (?,?,?)
+                   ON CONFLICT(datum, stunde) DO UPDATE SET views=excluded.views""",
+                (target.isoformat(), stunde, h_views),
+            )
 
 
 def main():
@@ -110,10 +119,10 @@ def main():
 
     for i in range(n, 0, -1):
         target = today - timedelta(days=i)
-        views, unique = collect_day(target, max_files=min(n + 10, 400))
-        save_day(target, views, unique)
+        views, unique, hourly = collect_day(target, max_files=min(n + 10, 400))
+        save_day(target, views, unique, hourly)
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{ts} [{target}] views={views} unique={unique}", flush=True)
+        print(f"{ts} [{target}] views={views} unique={unique} stunden={len(hourly)}", flush=True)
 
 
 if __name__ == "__main__":

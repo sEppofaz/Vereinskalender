@@ -9,6 +9,7 @@ import sys
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, "/opt/rename-webhook")
 from shared.vk_db import tg_get_all_subscriptions
@@ -51,10 +52,12 @@ def main():
     data   = json.loads(VEREINSTERMINE_FILE.read_text())
     labels = data.get("_labels", {})
 
-    morgen    = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    morgen_de = (datetime.now() + timedelta(days=1)).strftime("%d.%m.%Y")
+    berlin = ZoneInfo("Europe/Berlin")
+    morgen_dt = datetime.now(berlin) + timedelta(days=1)
+    morgen    = morgen_dt.strftime("%Y-%m-%d")
+    morgen_de = morgen_dt.strftime("%d.%m.%Y")
     wochentage = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]
-    morgen_wt  = wochentage[(datetime.now() + timedelta(days=1)).weekday()]
+    morgen_wt  = wochentage[morgen_dt.weekday()]
 
     morgen_termine: dict[str, list] = {}
     for key, termine in data.items():

@@ -147,6 +147,13 @@ def init_db():
                 ip_hash TEXT NOT NULL,
                 PRIMARY KEY (date, ip_hash)
             );
+
+            CREATE TABLE IF NOT EXISTS page_stats_hourly (
+                datum  TEXT    NOT NULL,
+                stunde INTEGER NOT NULL,
+                views  INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (datum, stunde)
+            );
         """)
         # Migrations: neue Spalten (scheitern lautlos wenn bereits vorhanden)
         for col_sql in [

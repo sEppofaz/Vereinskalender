@@ -318,6 +318,71 @@ def api_admin_stats_chart():
     }
 
 
+@kalender_bp.route("/api/admin/stats/hourly", methods=["GET"])
+def api_admin_stats_hourly():
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+
+    from zoneinfo import ZoneInfo
+    berlin = ZoneInfo("Europe/Berlin")
+    today  = datetime.now(berlin).date()
+
+    try:
+        d = int(request.args.get("d", "30"))
+    except ValueError:
+        d = 30
+    d = min(max(d, 1), 365)
+    from_date = (today - timedelta(days=d - 1)).isoformat()
+
+    # Stunden aus DB aggregieren
+    hourly = [0] * 24
+    try:
+        with db_conn() as conn:
+            rows = conn.execute(
+                "SELECT stunde, SUM(views) AS total FROM page_stats_hourly "
+                "WHERE datum >= ? GROUP BY stunde",
+                (from_date,),
+            ).fetchall()
+            for r in rows:
+                if 0 <= r["stunde"] <= 23:
+                    hourly[r["stunde"]] = r["total"] or 0
+    except Exception:
+        pass
+
+    # Heute live aus Log hinzuzählen
+    try:
+        import re as _re, gzip as _gzip
+        from pathlib import Path as _Path
+        from zoneinfo import ZoneInfo as _ZI
+        _berlin = _ZI("Europe/Berlin")
+        _log = _Path("/var/log/nginx/vereinskalender.access.log")
+        _months = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
+                   "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
+        if _log.exists():
+            for line in _log.read_text(errors="ignore").splitlines():
+                if '"GET /kalender' not in line and '"GET / ' not in line:
+                    continue
+                m = _re.search(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})', line)
+                if not m:
+                    continue
+                dd, mo, yy, hh = m.group(1), m.group(2), m.group(3), m.group(4)
+                try:
+                    from datetime import timezone as _tz
+                    dt = datetime(int(yy), _months[mo], int(dd), int(hh), tzinfo=_tz.utc)
+                    if dt.astimezone(_berlin).date() == today:
+                        hourly[dt.astimezone(_berlin).hour] += 1
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return json.dumps({"stunden": hourly, "tage": d}, ensure_ascii=False), 200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+    }
+
+
 @kalender_bp.route("/api/admin/stats", methods=["GET"])
 def api_admin_stats():
     token = request.headers.get("X-Upload-Token", "")
