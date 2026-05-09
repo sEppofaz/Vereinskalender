@@ -141,6 +141,12 @@ def init_db():
                 views           INTEGER NOT NULL DEFAULT 0,
                 unique_visitors INTEGER NOT NULL DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS ical_feed_requests (
+                date    TEXT NOT NULL,
+                ip_hash TEXT NOT NULL,
+                PRIMARY KEY (date, ip_hash)
+            );
         """)
         # Migrations: neue Spalten (scheitern lautlos wenn bereits vorhanden)
         for col_sql in [

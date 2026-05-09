@@ -354,6 +354,24 @@ def api_admin_stats():
     from zoneinfo import ZoneInfo
     jetzt = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%d.%m.%Y, %H:%M")
 
+    tg_subscribers = 0
+    ical_7d = 0
+    ical_30d = 0
+    try:
+        from datetime import date as _d, timedelta as _td
+        _heute = _d.today()
+        _d7  = (_heute - _td(days=7)).isoformat()
+        _d30 = (_heute - _td(days=30)).isoformat()
+        with db_conn() as conn:
+            r = conn.execute("SELECT COUNT(DISTINCT chat_id) AS n FROM tg_subscriptions").fetchone()
+            tg_subscribers = r["n"] if r else 0
+            r = conn.execute("SELECT COUNT(*) AS n FROM ical_feed_requests WHERE date >= ?", (_d7,)).fetchone()
+            ical_7d = r["n"] if r else 0
+            r = conn.execute("SELECT COUNT(*) AS n FROM ical_feed_requests WHERE date >= ?", (_d30,)).fetchone()
+            ical_30d = r["n"] if r else 0
+    except Exception:
+        pass
+
     return json.dumps({
         "aufrufe_heute":   h_views,
         "aufrufe_7d":      w_views,
@@ -364,6 +382,9 @@ def api_admin_stats():
         "termine_kd":      termine_kd,
         "letzter_import":  letzter_import,
         "timestamp":       jetzt,
+        "tg_subscribers":  tg_subscribers,
+        "ical_7d":         ical_7d,
+        "ical_30d":        ical_30d,
     }, ensure_ascii=False), 200, {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
 
 
@@ -682,25 +703,32 @@ def api_termine_patch():
     verein_key = body.get("verein_key", "")
     old_datum = body.get("datum", "")
     old_bezeichnung = body.get("bezeichnung", "")
+    new_verein_key = body.get("new_verein_key", "").strip()
     changes = {k: v for k, v in body.get("changes", {}).items()
                if k in {"datum", "uhrzeit", "ort", "ortschaft", "bezeichnung"}}
     if not verein_key or not old_datum or not old_bezeichnung:
         return json.dumps({"error": "verein_key, datum und bezeichnung erforderlich"}), 400, {"Content-Type": "application/json"}
     found = [False]
+    _sort = lambda lst: sorted(lst, key=lambda x: (x.get("datum", ""), x.get("uhrzeit", "")))
     def mutator(data):
         liste = data.get(verein_key, [])
-        for t in liste:
+        for i, t in enumerate(liste):
             if t.get("datum") == old_datum and t.get("bezeichnung") == old_bezeichnung:
                 t.update(changes)
                 found[0] = True
+                if new_verein_key and new_verein_key != verein_key:
+                    moved = liste.pop(i)
+                    data[verein_key] = _sort(liste)
+                    data.setdefault(new_verein_key, []).append(moved)
+                    data[new_verein_key] = _sort(data[new_verein_key])
+                elif "datum" in changes:
+                    data[verein_key] = _sort(liste)
                 break
-        if found[0] and "datum" in changes:
-            data[verein_key] = sorted(liste, key=lambda x: (x.get("datum", ""), x.get("uhrzeit", "")))
     from shared.kalender_store import KalenderStore
     KalenderStore.update(mutator)
     if not found[0]:
         return json.dumps({"error": "Termin nicht gefunden"}), 404, {"Content-Type": "application/json"}
-    log(f"Termin bearbeitet: {verein_key} / {old_datum} / {old_bezeichnung}")
+    log(f"Termin bearbeitet: {verein_key} / {old_datum} / {old_bezeichnung}" + (f" → {new_verein_key}" if new_verein_key else ""))
     return json.dumps({"ok": True}, ensure_ascii=False), 200, {"Content-Type": "application/json; charset=utf-8"}
 
 
@@ -783,9 +811,33 @@ def api_ical():
     )
 
 
+def _track_ical_request():
+    import hashlib
+    ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
+    try:
+        addr = ipaddress.ip_address(ip)
+        if addr.version == 6:
+            prefix = str(ipaddress.ip_network(f"{ip}/48", strict=False).network_address)
+        else:
+            prefix = ".".join(ip.split(".")[:3])
+    except Exception:
+        prefix = ip[:20]
+    ip_hash = hashlib.sha256(prefix.encode()).hexdigest()[:20]
+    today = datetime.now().date().isoformat()
+    try:
+        with db_conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO ical_feed_requests (date, ip_hash) VALUES (?, ?)",
+                (today, ip_hash),
+            )
+    except Exception:
+        pass
+
+
 @kalender_bp.route("/api/ical/feed")
 def api_ical_feed():
     """Abonnierbarer iCal-Feed aller bevorstehenden Termine (webcal://)."""
+    _track_ical_request()
     filter_vereine = {v.strip().lower() for v in request.args.get("v", "").split(",") if v.strip()}
     filter_ort     = request.args.get("ort", "").strip().lower()
 

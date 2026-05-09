@@ -1342,6 +1342,16 @@ async function loadStats(){
           <div style="font-size:28px;font-weight:700;color:var(--tab)">${data.aufrufe_7d}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${data.unique_7d} Besucher</div>
         </div>
+        <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">&#128242; Telegram-Abos</div>
+          <div style="font-size:28px;font-weight:700;color:#0088cc">${data.tg_subscribers??'–'}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">aktive Abonnenten</div>
+        </div>
+        <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">&#128197; Kalender-Feed</div>
+          <div style="font-size:28px;font-weight:700;color:#34c759">${data.ical_7d??'–'}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${data.ical_30d??'–'} unique (30&nbsp;Tage)</div>
+        </div>
       </div>
       <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -1541,41 +1551,46 @@ function renderAllAccounts(list){
   }
   list.sort((a,b)=>a.verein_name.localeCompare(b.verein_name,"de"));
   const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-  const used=new Set(list.map(u=>u.verein_name[0]?.toUpperCase()));
+  const used=new Set(list.map(v=>v.verein_name[0]?.toUpperCase()));
   const alphaBar=`<div class="alpha-bar">${alpha.map(l=>
     `<button class="alpha-btn${used.has(l)?"":" inactive"}" onclick="${used.has(l)?`scrollToAccLetter('${l}')`:""}">${l}</button>`
   ).join("")}</div>`;
   const grouped={};
-  list.forEach(u=>{
-    const l=(u.verein_name[0]||"#").toUpperCase();
+  list.forEach(v=>{
+    const l=(v.verein_name[0]||"#").toUpperCase();
     if(!grouped[l])grouped[l]=[];
-    grouped[l].push(u);
+    grouped[l].push(v);
   });
-  const statusBadge=u=>{
-    if(u.verein_status==="aktiv"&&u.aktiv&&u.email_verified)
-      return `<span style="color:#34c759;font-size:11px">&#10003; aktiv</span>`;
-    if(u.verein_status==="pending")
-      return `<span style="color:#ff9f0a;font-size:11px">&#9203; ausstehend</span>`;
-    if(!u.email_verified)
-      return `<span style="color:#ff9f0a;font-size:11px">&#9993; E-Mail unbestätigt</span>`;
+  const statusBadge=v=>{
+    if(v.status==="aktiv") return `<span style="color:#34c759;font-size:11px">&#10003; aktiv</span>`;
+    if(v.status==="pending") return `<span style="color:#ff9f0a;font-size:11px">&#9203; ausstehend</span>`;
     return `<span style="color:#8e8e93;font-size:11px">inaktiv</span>`;
   };
+  const userLines=u=>{
+    const parts=[];
+    if(u.name) parts.push(`<strong>${escHtml(u.name)}</strong>`);
+    if(u.email) parts.push(`<a href="mailto:${escHtml(u.email)}" style="color:var(--accent);text-decoration:none">${escHtml(u.email)}</a>`);
+    if(u.telefon) parts.push(`<a href="tel:${escHtml(u.telefon)}" style="color:var(--accent);text-decoration:none">${escHtml(u.telefon)}</a>`);
+    const badge=u.aktiv&&u.email_verified
+      ? `<span style="color:#34c759">&#10003;</span>`
+      : `<span style="color:#ff9f0a">&#9993;</span>`;
+    return `<div style="font-size:12px;color:var(--text2);padding:2px 0">${badge} ${parts.join(" &middot; ")}</div>`;
+  };
   const rows=Object.keys(grouped).sort().map(l=>{
-    const items=grouped[l].map(u=>`
-      <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:.5px solid var(--border)">
+    const items=grouped[l].map(v=>`
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 14px;border-bottom:.5px solid var(--border)">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(u.verein_name)}</div>
-          <div style="font-size:11px;color:var(--text3)">${escHtml(u.email)}${u.name?` · ${escHtml(u.name)}`:""}${u.telefon?` · ${escHtml(u.telefon)}`:""}</div>
-          <div style="font-size:11px;margin-top:1px">${statusBadge(u)}</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text)">${escHtml(v.verein_name)} ${statusBadge(v)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:1px">${escHtml(v.rubrik||"")}${v.heimatort?` · ${escHtml(v.heimatort)}`:""}${v.plz?` · PLZ ${escHtml(v.plz)}`:""}</div>
+          ${(v.users||[]).map(userLines).join("")}
         </div>
-        <button class="ver-del-btn" style="border-color:var(--border2);color:var(--text2)"
-          data-uid="${u.id}" data-name="${escHtml(u.name||"")}" data-tel="${escHtml(u.telefon||"")}"
-          onclick="openUserEditModal(this)">&#9998;</button>
+        <button class="ver-del-btn" style="border-color:var(--border2);color:var(--text2);flex-shrink:0"
+          onclick="openVereinEditModal(${v.id},'${escHtml(v.verein_name).replace(/'/g,"\\'")}',${JSON.stringify(v)})">&#9998;</button>
       </div>`).join("");
     return `<div class="ver-section-hdr" id="acc-letter-${l}">${l}</div><div class="filter-card" style="padding:0;margin-bottom:6px">${items}</div>`;
   }).join("");
   el.innerHTML=`
-    <div style="font-size:12px;color:var(--text3);padding:0 2px 10px">${list.length} Account${list.length!==1?"s":""}</div>
+    <div style="font-size:12px;color:var(--text3);padding:0 2px 10px">${list.length} Verein${list.length!==1?"e":""}</div>
     ${alphaBar}
     ${rows}`;
 }
@@ -1585,53 +1600,125 @@ function scrollToAccLetter(l){
   if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
-function openUserEditModal(btn){
-  const id=+btn.dataset.uid;
-  const name=btn.dataset.name||"";
-  const telefon=btn.dataset.tel||"";
-  document.getElementById("user-edit-modal")?.remove();
+let _editVereinData=null;
+function openVereinEditModal(verein_id,verein_name,vData){
+  _editVereinData=vData;
+  document.getElementById("verein-edit-modal")?.remove();
+  const R=["Verein","Pfarrei","Kunst und Kultur","Sonstiges"];
+  const rubrikOpts=R.map(r=>`<option value="${r}"${(vData.rubrik||"Verein")===r?" selected":""}>${r}</option>`).join("");
+  const usersHtml=(vData.users||[]).map(u=>`
+    <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:6px">${escHtml(u.email)} <span style="color:#8e8e93">(${u.role})</span></div>
+      <input data-uid="${u.id}" data-field="name" type="text" value="${escHtml(u.name||"")}" placeholder="Name"
+        style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border2);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none;margin-bottom:6px">
+      <input data-uid="${u.id}" data-field="telefon" type="tel" value="${escHtml(u.telefon||"")}" placeholder="Telefon"
+        style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border2);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+    </div>`).join("");
   const modal=document.createElement("div");
-  modal.id="user-edit-modal";
+  modal.id="verein-edit-modal";
   modal.className="modal-overlay";
   modal.innerHTML=`
-    <div class="modal-sheet">
-      <div class="modal-title">Account bearbeiten</div>
-      <div style="margin-top:12px">
-        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Name (Ansprechpartner)</label>
-        <input id="edit-user-name" type="text" value="${escHtml(name)}" placeholder="Vorname Nachname"
-          style="width:100%;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:15px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
-        <label style="font-size:12px;color:var(--text2);display:block;margin:10px 0 4px">Telefon</label>
-        <input id="edit-user-tel" type="tel" value="${escHtml(telefon)}" placeholder="+49 ..."
-          style="width:100%;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:15px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+    <div class="modal-sheet" style="max-height:85vh;overflow-y:auto">
+      <div class="modal-title">Verein bearbeiten</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Vereinsdaten</div>
+      <div style="margin-bottom:8px">
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">Name</label>
+        <input id="ve-name" type="text" value="${escHtml(vData.verein_name)}"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border2);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">Rubrik</label>
+          <select id="ve-rubrik" style="width:100%;padding:8px 6px;border:1.5px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px">${rubrikOpts}</select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">PLZ</label>
+          <input id="ve-plz" type="text" value="${escHtml(vData.plz||"")}" placeholder="84069" maxlength="5"
+            style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border2);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">Heimatort</label>
+        <input id="ve-heimatort" type="text" value="${escHtml(vData.heimatort||"")}" placeholder="Hölskofen"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border2);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+      </div>
+      <div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Mitglieder</div>
+      ${usersHtml}
+      <div id="ve-msg" style="font-size:13px;min-height:18px;margin-top:10px"></div>
       <div style="display:flex;gap:8px;margin-top:14px">
-        <button onclick="saveUserEdit(${id})"
+        <button onclick="saveVereinEdit(${verein_id})"
           style="flex:1;padding:10px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:600;cursor:pointer;font-size:15px">Speichern</button>
-        <button onclick="document.getElementById('user-edit-modal').remove()"
+        <button onclick="document.getElementById('verein-edit-modal')?.remove()"
           style="flex:1;padding:10px;border-radius:10px;background:var(--bg2);color:var(--text);border:none;font-weight:600;cursor:pointer;font-size:15px">Abbrechen</button>
+      </div>
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+        <button onclick="deleteVereinAdmin(${verein_id},'${escHtml(vData.verein_name).replace(/'/g,"\\'")}','${escHtml(vData.verein_key||"")}')"
+          style="width:100%;padding:9px;border:1.5px solid #ff3b30;border-radius:10px;background:none;color:#ff3b30;font-size:14px;cursor:pointer">
+          &#128465; Verein-Account l&ouml;schen
+        </button>
       </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
 }
 
-async function saveUserEdit(id){
-  const name=document.getElementById("edit-user-name").value.trim();
-  const telefon=document.getElementById("edit-user-tel").value.trim();
+async function saveVereinEdit(verein_id){
   const token=sessionStorage.getItem("ut")||"";
+  const msg=document.getElementById("ve-msg");
+  if(msg){msg.style.color="var(--text3)";msg.textContent="Speichere…";}
   try{
-    const r=await fetch(`/api/admin/users/${id}`,{
+    const r1=await fetch(`/api/admin/verein/${verein_id}`,{
       method:"PATCH",
       headers:{"Content-Type":"application/json","X-Upload-Token":token},
-      body:JSON.stringify({name,telefon}),
+      body:JSON.stringify({
+        verein_name: document.getElementById("ve-name")?.value.trim(),
+        rubrik:      document.getElementById("ve-rubrik")?.value,
+        heimatort:   document.getElementById("ve-heimatort")?.value.trim(),
+        plz:         document.getElementById("ve-plz")?.value.trim(),
+      }),
     });
-    if(r.ok){
-      document.getElementById("user-edit-modal")?.remove();
-      loadAllAccounts();
-    }else{
-      alert("Fehler beim Speichern");
+    if(!r1.ok) throw new Error("Vereinsdaten-Fehler");
+    const userInputs=document.querySelectorAll("#verein-edit-modal [data-uid]");
+    const byUid={};
+    userInputs.forEach(inp=>{
+      const uid=inp.dataset.uid;
+      if(!byUid[uid])byUid[uid]={};
+      byUid[uid][inp.dataset.field]=inp.value.trim();
+    });
+    for(const[uid,fields] of Object.entries(byUid)){
+      await fetch(`/api/admin/users/${uid}`,{
+        method:"PATCH",
+        headers:{"Content-Type":"application/json","X-Upload-Token":token},
+        body:JSON.stringify(fields),
+      });
     }
-  }catch(e){alert("Netzwerkfehler");}
+    if(msg){msg.style.color="green";msg.textContent="✅ Gespeichert";}
+    setTimeout(()=>{document.getElementById("verein-edit-modal")?.remove();loadAllAccounts();},800);
+  }catch(e){
+    if(msg){msg.style.color="red";msg.textContent="❌ Fehler beim Speichern";}
+  }
+}
+
+async function deleteVereinAdmin(verein_id,verein_name,verein_key){
+  if(!confirm(`Verein-Account "${verein_name}" löschen?\n\nDer Login-Zugang wird dauerhaft entfernt.`))return;
+  const deleteTermine=confirm(`Sollen auch alle Termine von "${verein_name}" gelöscht werden?\n\nOK = Ja, alle löschen · Abbrechen = Nein, Termine behalten`);
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const r=await fetch(`/api/admin/verein/${verein_id}`,{
+      method:"DELETE",
+      headers:{"Content-Type":"application/json","X-Upload-Token":token},
+      body:JSON.stringify({delete_termine:deleteTermine}),
+    });
+    const d=await r.json();
+    if(d.ok){
+      document.getElementById("verein-edit-modal")?.remove();
+      if(deleteTermine&&d.geloescht_termine>0){
+        delete labels[verein_key];delete rubriken[verein_key];
+        renderRubrikBar();render();
+      }
+      loadAllAccounts();
+    }else{alert("❌ "+(d.error||"Fehler"));}
+  }catch(e){alert("❌ Netzwerkfehler");}
 }
 
 /* ── Vereine-Tab (Admin) ── */
@@ -1854,12 +1941,21 @@ function renderTermineList(){
 function showTerminEdit(idx){
   const t=_admTermine[idx];
   const el=document.getElementById("trm-tab-content");
+  const vereinsOpts=Object.entries(labels)
+    .sort((a,b)=>a[1].localeCompare(b[1],"de"))
+    .map(([k,v])=>`<option value="${k}"${k===t.verein?" selected":""}>${escHtml(v)}</option>`)
+    .join("");
   el.innerHTML=`
     <div style="margin-bottom:12px">
       <button onclick="loadTermine()" style="background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;padding:0">&#8592; Alle Termine</button>
     </div>
     <div class="filter-card" style="padding:14px 14px 16px">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Verein: <strong style="color:var(--text)">${t._vereinName}</strong></div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:3px">Verein zuordnen</label>
+        <select id="trm-verein" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--border2);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text)">
+          ${vereinsOpts}
+        </select>
+      </div>
       ${_admFld("Datum (YYYY-MM-DD)","trm-datum","text",t.datum||"")}
       ${_admFld("Uhrzeit (HH:MM)","trm-uhrzeit","time",t.uhrzeit||"")}
       ${_admFld("Bezeichnung","trm-bezeichnung","text",t.bezeichnung||"")}
@@ -1897,6 +1993,7 @@ async function saveTermin(idx){
   const t=_admTermine[idx];
   const token=sessionStorage.getItem("ut")||"";
   const msg=document.getElementById("trm-msg");
+  const selectedVerein=document.getElementById("trm-verein")?.value||t.verein;
   const changes={
     datum:       document.getElementById("trm-datum").value.trim(),
     uhrzeit:     document.getElementById("trm-uhrzeit").value.trim(),
@@ -1906,16 +2003,19 @@ async function saveTermin(idx){
   };
   if(!changes.datum||!changes.bezeichnung){msg.style.color="red";msg.textContent="Datum und Bezeichnung sind Pflichtfelder.";return;}
   msg.style.color="var(--text3)";msg.textContent="Speichere…";
+  const body={verein_key:t.verein,datum:t.datum,bezeichnung:t.bezeichnung,changes};
+  if(selectedVerein&&selectedVerein!==t.verein)body.new_verein_key=selectedVerein;
   try{
     const r=await fetch("/api/termine",{
       method:"PATCH",
       headers:{"Content-Type":"application/json","X-Upload-Token":token},
-      body:JSON.stringify({verein_key:t.verein,datum:t.datum,bezeichnung:t.bezeichnung,changes}),
+      body:JSON.stringify(body),
     });
     const d=await r.json();
     if(d.ok){
       msg.style.color="green";msg.textContent="✅ Gespeichert";
       Object.assign(_admTermine[idx],changes);
+      if(body.new_verein_key)_admTermine[idx].verein=body.new_verein_key;
       setTimeout(()=>loadTermine(),900);
     }else{
       msg.style.color="red";msg.textContent="❌ "+(d.error||"Fehler");

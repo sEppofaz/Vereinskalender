@@ -581,16 +581,27 @@ def admin_users():
     if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
         return {"error": "Unauthorized"}, 401
     with db_conn() as conn:
-        rows = conn.execute(
-            """SELECT u.id, u.email, u.name, u.telefon, u.aktiv,
-                      u.email_verified, u.created_at,
-                      v.id as verein_id, v.verein_name, v.status as verein_status
-               FROM vk_users u
-               JOIN vereine_accounts v ON v.id = u.verein_id
-               WHERE u.role = 'admin'
+        vereine = conn.execute(
+            """SELECT v.id, v.verein_key, v.verein_name, v.status,
+                      v.rubrik, v.heimatort, v.plz, v.gemeinde, v.landkreis,
+                      v.created_at
+               FROM vereine_accounts v
                ORDER BY v.verein_name""",
         ).fetchall()
-    return [dict(r) for r in rows]
+        users = conn.execute(
+            """SELECT u.id, u.email, u.name, u.telefon, u.aktiv,
+                      u.email_verified, u.created_at, u.role, u.verein_id
+               FROM vk_users u""",
+        ).fetchall()
+    users_by_verein: dict = {}
+    for u in users:
+        users_by_verein.setdefault(u["verein_id"], []).append(dict(u))
+    result = []
+    for v in vereine:
+        vd = dict(v)
+        vd["users"] = users_by_verein.get(v["id"], [])
+        result.append(vd)
+    return result
 
 
 @auth_bp.route("/api/admin/users/<int:user_id>", methods=["PATCH"])
@@ -610,6 +621,81 @@ def admin_update_user(user_id: int):
             (name, telefon, user_id),
         )
     return {"ok": True}
+
+
+@auth_bp.route("/api/admin/verein/<int:verein_id>", methods=["PATCH"])
+def admin_update_verein(verein_id: int):
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return {"error": "Unauthorized"}, 401
+    body = request.get_json(silent=True) or {}
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM vereine_accounts WHERE id = ?", (verein_id,)
+        ).fetchone()
+        if not row:
+            return {"error": "Nicht gefunden"}, 404
+        fields = {}
+        for f in ("verein_name", "rubrik", "heimatort", "plz", "gemeinde", "landkreis"):
+            if f in body:
+                fields[f] = (body[f] or "").strip() or None
+        if "plz" in fields and fields["plz"]:
+            import re as _re
+            if not _re.match(r"^\d{5}$", fields["plz"]):
+                fields.pop("plz")
+        if fields:
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            conn.execute(
+                f"UPDATE vereine_accounts SET {set_clause} WHERE id = ?",
+                list(fields.values()) + [verein_id],
+            )
+    return {"ok": True}
+
+
+@auth_bp.route("/api/admin/verein/<int:verein_id>", methods=["DELETE"])
+def admin_delete_verein(verein_id: int):
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return {"error": "Unauthorized"}, 401
+    body = request.get_json(silent=True) or {}
+    delete_termine = bool(body.get("delete_termine", False))
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT verein_key, verein_name FROM vereine_accounts WHERE id = ?",
+            (verein_id,),
+        ).fetchone()
+        if not row:
+            return {"error": "Nicht gefunden"}, 404
+        verein_key  = row["verein_key"]
+        verein_name = row["verein_name"]
+        user_ids = [
+            r["id"] for r in conn.execute(
+                "SELECT id FROM vk_users WHERE verein_id = ?", (verein_id,)
+            ).fetchall()
+        ]
+        for uid in user_ids:
+            conn.execute("DELETE FROM vk_sessions WHERE user_id = ?", (uid,))
+            conn.execute("DELETE FROM vk_audit WHERE user_id = ?", (uid,))
+        conn.execute("DELETE FROM vk_users WHERE verein_id = ?", (verein_id,))
+        conn.execute("DELETE FROM upload_quota WHERE verein_id = ?", (verein_id,))
+        if verein_key:
+            conn.execute(
+                "DELETE FROM tg_subscriptions WHERE verein_key = ?", (verein_key,)
+            )
+        conn.execute("DELETE FROM vereine_accounts WHERE id = ?", (verein_id,))
+    geloescht_termine = 0
+    if delete_termine and verein_key:
+        try:
+            from shared.kalender_store import KalenderStore
+            def _rm(data):
+                nonlocal geloescht_termine
+                geloescht_termine = len(data.pop(verein_key, []))
+                data.get("_labels", {}).pop(verein_key, None)
+                data.get("_meta",   {}).pop(verein_key, None)
+            KalenderStore.update(_rm)
+        except Exception:
+            pass
+    return {"ok": True, "geloescht_termine": geloescht_termine}
 
 
 
