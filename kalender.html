@@ -1365,6 +1365,12 @@ async function loadStats(){
         <div id="sta-chart"><div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div></div>
       </div>
       <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-weight:600;color:var(--text1);font-size:14px">&#128336; Tageszeit (letzte 30&nbsp;Tage)</span>
+        </div>
+        <div id="sta-hourly"><div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div></div>
+      </div>
+      <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
           <span style="color:var(--text2);font-size:14px">&#127974; Vereine</span>
           <span style="font-weight:600">${data.vereine_aktiv} aktiv / ${data.vereine_gesamt} gesamt</span>
@@ -1383,6 +1389,7 @@ async function loadStats(){
       </div>
       <div style="text-align:center;font-size:11px;color:var(--text3)">Stand: ${escHtml(data.timestamp)}</div>`;
     loadChart(_chartPeriod);
+    loadHourlyChart();
   }catch(e){
     el.innerHTML='<div style="color:#ff3b30;padding:20px;text-align:center">Fehler beim Laden der Statistik</div>';
   }
@@ -1408,6 +1415,46 @@ async function loadChart(d){
   }catch(e){
     el.innerHTML='<div style="color:#ff3b30;text-align:center;font-size:12px">Fehler beim Laden</div>';
   }
+}
+
+async function loadHourlyChart(){
+  const el=document.getElementById("sta-hourly");
+  if(!el)return;
+  try{
+    const token=sessionStorage.getItem("ut")||"";
+    const resp=await fetch("/api/admin/stats/hourly?d=30",{headers:{"X-Upload-Token":token}});
+    const data=await resp.json();
+    renderHourlyChart(el,data.stunden||[]);
+  }catch(e){
+    el.innerHTML='<div style="color:#ff3b30;text-align:center;font-size:12px">Fehler beim Laden</div>';
+  }
+}
+
+function renderHourlyChart(el,stunden){
+  const rawMax=Math.max(...stunden,1);
+  const {max:nMax,ticks}=niceScale(rawMax);
+  const H=70;
+  const gridHtml=ticks.map(v=>`<div style="position:absolute;top:${(1-v/nMax)*100}%;left:0;right:0;border-top:1px dashed color-mix(in srgb,var(--border) 80%,transparent);pointer-events:none"></div>`).join('');
+  const yAxisHtml=ticks.map(v=>`<div style="position:absolute;top:${(1-v/nMax)*100}%;right:3px;transform:translateY(-50%);font-size:9px;color:var(--text3);line-height:1;white-space:nowrap">${v}</div>`).join('');
+  const barsHtml=stunden.map((v,h)=>{
+    const pct=Math.max(Math.round(v/nMax*100),v>0?1:0);
+    return `<div style="flex:1;background:var(--tab);opacity:.75;height:${pct}%;min-height:${v>0?'2px':'0'};border-radius:2px 2px 0 0" title="${h}:00 Uhr – ${v} Aufrufe"></div>`;
+  }).join('');
+  const labelsHtml=stunden.map((_,h)=>{
+    const show=(h%6===0)||(h===23);
+    return `<div style="flex:1;font-size:9px;color:var(--text3);text-align:center;${show?'':'visibility:hidden'}">${h}</div>`;
+  }).join('');
+  el.innerHTML=`
+    <div style="display:flex;gap:0">
+      <div style="width:26px;height:${H}px;position:relative;flex-shrink:0">${yAxisHtml}</div>
+      <div style="flex:1;min-width:0">
+        <div style="height:${H}px;position:relative">
+          ${gridHtml}
+          <div style="display:flex;align-items:flex-end;height:100%;gap:1px;position:relative;z-index:1">${barsHtml}</div>
+        </div>
+        <div style="display:flex;gap:1px;margin-top:2px">${labelsHtml}</div>
+      </div>
+    </div>`;
 }
 
 function niceScale(maxVal){
