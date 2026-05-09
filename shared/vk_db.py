@@ -135,6 +135,12 @@ def init_db():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (chat_id, verein_key)
             );
+
+            CREATE TABLE IF NOT EXISTS page_stats (
+                datum           TEXT PRIMARY KEY,
+                views           INTEGER NOT NULL DEFAULT 0,
+                unique_visitors INTEGER NOT NULL DEFAULT 0
+            );
         """)
         # Migrations: neue Spalten (scheitern lautlos wenn bereits vorhanden)
         for col_sql in [
@@ -269,5 +275,15 @@ def tg_get_all_subscriptions() -> list[dict]:
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT chat_id, verein_key FROM tg_subscriptions"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_page_stats(from_date: str, to_date: str) -> list[dict]:
+    with db_conn() as conn:
+        rows = conn.execute(
+            "SELECT datum, views, unique_visitors FROM page_stats "
+            "WHERE datum >= ? AND datum <= ? ORDER BY datum",
+            (from_date, to_date),
         ).fetchall()
         return [dict(r) for r in rows]

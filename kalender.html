@@ -1322,6 +1322,8 @@ function switchAdmTab(tab){
   if(tab==="sta")loadStats();
 }
 
+let _chartPeriod=30;
+
 async function loadStats(){
   const el=document.getElementById("sta-tab-content");
   const token=sessionStorage.getItem("ut")||"";
@@ -1342,6 +1344,17 @@ async function loadStats(){
         </div>
       </div>
       <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-weight:600;color:var(--text1);font-size:14px">&#128200; Besucherverlauf</span>
+          <div style="display:flex;gap:4px">
+            <button id="chart-btn-7"   onclick="loadChart(7)"   style="padding:3px 9px;border:1.5px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text3);font-size:12px;cursor:pointer">7T</button>
+            <button id="chart-btn-30"  onclick="loadChart(30)"  style="padding:3px 9px;border:1.5px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text3);font-size:12px;cursor:pointer">30T</button>
+            <button id="chart-btn-365" onclick="loadChart(365)" style="padding:3px 9px;border:1.5px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text3);font-size:12px;cursor:pointer">1J</button>
+          </div>
+        </div>
+        <div id="sta-chart"><div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div></div>
+      </div>
+      <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
           <span style="color:var(--text2);font-size:14px">&#127974; Vereine</span>
           <span style="font-weight:600">${data.vereine_aktiv} aktiv / ${data.vereine_gesamt} gesamt</span>
@@ -1359,9 +1372,81 @@ async function loadStats(){
         <button onclick="loadStats()" style="padding:8px 20px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);color:var(--text2);font-size:13px;cursor:pointer">&#8635; Aktualisieren</button>
       </div>
       <div style="text-align:center;font-size:11px;color:var(--text3)">Stand: ${escHtml(data.timestamp)}</div>`;
+    loadChart(_chartPeriod);
   }catch(e){
     el.innerHTML='<div style="color:#ff3b30;padding:20px;text-align:center">Fehler beim Laden der Statistik</div>';
   }
+}
+
+async function loadChart(d){
+  _chartPeriod=d;
+  [7,30,365].forEach(n=>{
+    const btn=document.getElementById("chart-btn-"+n);
+    if(!btn)return;
+    btn.style.color      = n===d ? "var(--tab)"   : "var(--text3)";
+    btn.style.fontWeight = n===d ? "700"           : "400";
+    btn.style.borderColor= n===d ? "var(--tab)"    : "var(--border2)";
+  });
+  const el=document.getElementById("sta-chart");
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div>';
+  try{
+    const token=sessionStorage.getItem("ut")||"";
+    const resp=await fetch("/api/admin/stats/chart?d="+d,{headers:{"X-Upload-Token":token}});
+    const data=await resp.json();
+    renderChart(el,data.tage,d);
+  }catch(e){
+    el.innerHTML='<div style="color:#ff3b30;text-align:center;font-size:12px">Fehler beim Laden</div>';
+  }
+}
+
+function renderChart(el,tage,d){
+  let bars;
+  if(d===365){
+    const months={};
+    tage.forEach(day=>{
+      const ym=day.datum.slice(0,7);
+      if(!months[ym])months[ym]={views:0,unique:0,ym};
+      months[ym].views+=day.views;
+      months[ym].unique+=day.unique;
+    });
+    bars=Object.values(months).map(m=>({
+      label: MO[parseInt(m.ym.slice(5,7))-1]+"'"+m.ym.slice(2,4),
+      tooltip: m.ym+": "+m.views+" Aufrufe, "+m.unique+" Besucher",
+      views: m.views, unique: m.unique
+    }));
+  } else {
+    bars=tage.map((day,i)=>{
+      const dt=new Date(day.datum+"T12:00:00");
+      const lbl=(dt.getDate())+"."+(dt.getMonth()+1)+".";
+      return {label:lbl, tooltip:day.datum+": "+day.views+" Aufrufe, "+day.unique+" Besucher",
+              views:day.views, unique:day.unique};
+    });
+  }
+  const maxVal=Math.max(...bars.map(b=>b.views),1);
+  const totalViews=bars.reduce((s,b)=>s+b.views,0);
+  const totalUnique=bars.reduce((s,b)=>s+b.unique,0);
+  const n=bars.length;
+  const showEvery=d===7?1:d===30?5:1;
+  const gap=d===365?5:d===30?2:3;
+
+  const barHtml=bars.map((b,i)=>{
+    const pct=Math.max(Math.round(b.views/maxVal*100),b.views>0?1:0);
+    const showLbl=(i%showEvery===0)||(i===n-1);
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0">
+      <div style="width:100%;height:90px;display:flex;align-items:flex-end">
+        <div style="width:100%;background:var(--tab);opacity:.82;height:${pct}%;min-height:${b.views>0?'2px':'0'};border-radius:2px 2px 0 0" title="${b.tooltip}"></div>
+      </div>
+      <div style="font-size:9px;color:var(--text3);text-align:center;overflow:hidden;max-width:100%;white-space:nowrap;${showLbl?'':'visibility:hidden'}">${b.label}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;display:flex;gap:14px">
+      <span>Gesamt: <strong style="color:var(--text1)">${totalViews.toLocaleString("de")}</strong> Aufrufe</span>
+      <span><strong style="color:var(--text1)">${totalUnique.toLocaleString("de")}</strong> Besucher</span>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:${gap}px">${barHtml}</div>`;
 }
 
 async function loadPendingVereine(){

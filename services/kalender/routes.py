@@ -253,6 +253,71 @@ def _count_page_views() -> tuple[int, int, int, int]:
     return h_cnt, w_cnt, len(h_ips), len(w_ips)
 
 
+def _count_today_live() -> tuple[int, int]:
+    """Liest die aktuellen heutigen Aufrufe live aus dem nginx-Log (Europe/Berlin)."""
+    from zoneinfo import ZoneInfo
+    berlin = ZoneInfo("Europe/Berlin")
+    today  = datetime.now(berlin).date()
+    v = 0
+    ips: set[str] = set()
+    ip_pat = re.compile(r'^(\S+)')
+    for log_file in _stats_log_files(2):
+        for line in _stats_read_lines(log_file):
+            if '"GET /kalender' not in line and '"GET / ' not in line:
+                continue
+            dt = _stats_parse_dt(line)
+            if dt is None:
+                continue
+            if dt.replace(tzinfo=_tz.utc).astimezone(berlin).date() != today:
+                continue
+            m = ip_pat.match(line)
+            ips.add(_stats_anon_ip(m.group(1)) if m else "unknown")
+            v += 1
+    return v, len(ips)
+
+
+@kalender_bp.route("/api/admin/stats/chart", methods=["GET"])
+def api_admin_stats_chart():
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+
+    from zoneinfo import ZoneInfo
+    from shared.vk_db import get_page_stats
+    berlin = ZoneInfo("Europe/Berlin")
+    today  = datetime.now(berlin).date()
+
+    try:
+        d = int(request.args.get("d", "30"))
+    except ValueError:
+        d = 30
+    d = min(max(d, 7), 3650)
+
+    from_date = (today - timedelta(days=d - 1)).isoformat()
+    to_date   = today.isoformat()
+
+    db_rows = {r["datum"]: r for r in get_page_stats(from_date, to_date)}
+
+    # Heute immer live aus Logs (Cron läuft erst um 00:05 für den Vortag)
+    tv, tu = _count_today_live()
+    db_rows[today.isoformat()] = {"datum": today.isoformat(), "views": tv, "unique_visitors": tu}
+
+    result = []
+    for i in range(d - 1, -1, -1):
+        day = (today - timedelta(days=i)).isoformat()
+        r   = db_rows.get(day)
+        result.append({
+            "datum":  day,
+            "views":  r["views"]           if r else 0,
+            "unique": r["unique_visitors"]  if r else 0,
+        })
+
+    return json.dumps({"tage": result}, ensure_ascii=False), 200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+    }
+
+
 @kalender_bp.route("/api/admin/stats", methods=["GET"])
 def api_admin_stats():
     token = request.headers.get("X-Upload-Token", "")
