@@ -407,6 +407,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <button class="adm-tab" id="admbtn-ver" onclick="switchAdmTab('ver')">&#127974; Vereine</button>
       <button class="adm-tab" id="admbtn-acc" onclick="switchAdmTab('acc')">&#128101; Accounts<span id="acc-pending-badge" style="display:none;background:#ff3b30;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;vertical-align:middle;line-height:16px"></span></button>
       <button class="adm-tab" id="admbtn-trm" onclick="switchAdmTab('trm')">&#128197; Termine</button>
+      <button class="adm-tab" id="admbtn-sta" onclick="switchAdmTab('sta')">&#128202; Stats</button>
     </div>
 
     <!-- Tab 1: Upload -->
@@ -486,6 +487,13 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <div id="adm-tab-trm" style="display:none">
       <div id="trm-tab-content">
         <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128197; Lade&#8230;</div>
+      </div>
+    </div>
+
+    <!-- Tab 6: Statistik -->
+    <div id="adm-tab-sta" style="display:none">
+      <div id="sta-tab-content">
+        <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128202; Lade&#8230;</div>
       </div>
     </div>
 
@@ -1303,7 +1311,7 @@ document.querySelector(".content").addEventListener("scroll",function(){
 
 /* ── Admin-Tabs ── */
 function switchAdmTab(tab){
-  ["upload","ort","ver","acc","trm"].forEach(t=>{
+  ["upload","ort","ver","acc","trm","sta"].forEach(t=>{
     document.getElementById("adm-tab-"+t).style.display=t===tab?"":"none";
     document.getElementById("admbtn-"+t).classList.toggle("on",t===tab);
   });
@@ -1311,6 +1319,49 @@ function switchAdmTab(tab){
   if(tab==="ver")loadVereine();
   if(tab==="acc"){loadPendingVereine();loadAllAccounts();}
   if(tab==="trm")loadTermine();
+  if(tab==="sta")loadStats();
+}
+
+async function loadStats(){
+  const el=document.getElementById("sta-tab-content");
+  const token=sessionStorage.getItem("ut")||"";
+  el.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128202; Lade&hellip;</div>';
+  try{
+    const data=await(await fetch("/api/admin/stats",{headers:{"X-Upload-Token":token}})).json();
+    el.innerHTML=`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Aufrufe heute</div>
+          <div style="font-size:28px;font-weight:700;color:var(--tab)">${data.aufrufe_heute}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${data.unique_heute} Besucher</div>
+        </div>
+        <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Aufrufe 7 Tage</div>
+          <div style="font-size:28px;font-weight:700;color:var(--tab)">${data.aufrufe_7d}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${data.unique_7d} Besucher</div>
+        </div>
+      </div>
+      <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          <span style="color:var(--text2);font-size:14px">&#127974; Vereine</span>
+          <span style="font-weight:600">${data.vereine_aktiv} aktiv / ${data.vereine_gesamt} gesamt</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          <span style="color:var(--text2);font-size:14px">&#128197; K&uuml;nftige Termine</span>
+          <span style="font-weight:600">${data.termine_kd}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--text2);font-size:14px">&#128229; Letzter Import</span>
+          <span style="font-weight:600;font-size:13px;text-align:right;max-width:55%">${escHtml(data.letzter_import)}</span>
+        </div>
+      </div>
+      <div style="text-align:center;margin-bottom:4px">
+        <button onclick="loadStats()" style="padding:8px 20px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);color:var(--text2);font-size:13px;cursor:pointer">&#8635; Aktualisieren</button>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--text3)">Stand: ${escHtml(data.timestamp)}</div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:#ff3b30;padding:20px;text-align:center">Fehler beim Laden der Statistik</div>';
+  }
 }
 
 async function loadPendingVereine(){

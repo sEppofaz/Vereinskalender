@@ -1,9 +1,11 @@
+import gzip
+import ipaddress
 import json
 import os
 import re
 import time
 import uuid as _uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone as _tz
 from pathlib import Path
 
 from flask import Blueprint, Response, request
@@ -179,6 +181,125 @@ def api_check_token():
     if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
         return "", 401
     return "", 200
+
+
+_NGINX_LOG  = Path("/var/log/nginx/vereinskalender.access.log")
+_MONTHS_MAP = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
+               "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
+
+
+def _stats_log_files(n: int) -> list[Path]:
+    files = [_NGINX_LOG] if _NGINX_LOG.exists() else []
+    for i in range(1, n + 1):
+        p  = _NGINX_LOG.parent / f"{_NGINX_LOG.name}.{i}"
+        gz = _NGINX_LOG.parent / f"{_NGINX_LOG.name}.{i}.gz"
+        if p.exists():   files.append(p)
+        elif gz.exists(): files.append(gz)
+    return files
+
+
+def _stats_read_lines(path: Path) -> list[str]:
+    try:
+        if path.suffix == ".gz":
+            with gzip.open(path, "rt", errors="ignore") as f:
+                return f.readlines()
+        return path.read_text(errors="ignore").splitlines()
+    except Exception:
+        return []
+
+
+def _stats_parse_dt(line: str) -> datetime | None:
+    m = re.search(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})', line)
+    if not m:
+        return None
+    d, mo, y, h, mi, s = m.groups()
+    try:
+        return datetime(int(y), _MONTHS_MAP[mo], int(d), int(h), int(mi), int(s))
+    except (KeyError, ValueError):
+        return None
+
+
+def _stats_anon_ip(raw: str) -> str:
+    try:
+        addr = ipaddress.ip_address(raw)
+        if isinstance(addr, ipaddress.IPv4Address):
+            return str(ipaddress.ip_network(f"{raw}/24", strict=False).network_address)
+        return str(ipaddress.ip_network(f"{raw}/48", strict=False).network_address)
+    except ValueError:
+        return "unknown"
+
+
+def _count_page_views() -> tuple[int, int, int, int]:
+    now    = datetime.now(_tz.utc).replace(tzinfo=None)
+    heute  = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = now - timedelta(days=7)
+    h_cnt = w_cnt = 0
+    h_ips: set[str] = set()
+    w_ips: set[str] = set()
+    ip_pat = re.compile(r'^(\S+)')
+    for log_file in _stats_log_files(7):
+        for line in _stats_read_lines(log_file):
+            if '"GET /kalender' not in line and '"GET / ' not in line:
+                continue
+            dt = _stats_parse_dt(line)
+            if dt is None:
+                continue
+            m = ip_pat.match(line)
+            anon = _stats_anon_ip(m.group(1)) if m else "unknown"
+            if dt >= heute:
+                h_cnt += 1; h_ips.add(anon)
+            if dt >= cutoff:
+                w_cnt += 1; w_ips.add(anon)
+    return h_cnt, w_cnt, len(h_ips), len(w_ips)
+
+
+@kalender_bp.route("/api/admin/stats", methods=["GET"])
+def api_admin_stats():
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+
+    h_views, w_views, h_unique, w_unique = _count_page_views()
+
+    vereine_gesamt = vereine_aktiv = termine_kd = 0
+    try:
+        raw   = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
+        heute = datetime.now().strftime("%Y-%m-%d")
+        for key, items in raw.items():
+            if key.startswith("_") or not isinstance(items, list):
+                continue
+            vereine_gesamt += 1
+            kuenftige = [t for t in items if not t.get("geloescht") and t.get("datum", "") >= heute]
+            if kuenftige:
+                vereine_aktiv += 1
+            termine_kd += len(kuenftige)
+    except Exception:
+        pass
+
+    letzter_import = "–"
+    last_import_file = Path("/opt/rename-webhook/last_import.json")
+    try:
+        if last_import_file.exists():
+            li = json.loads(last_import_file.read_text())
+            dt = datetime.strptime(li["datum"], "%Y-%m-%d %H:%M")
+            letzter_import = f"{dt.strftime('%d.%m.%Y, %H:%M')} ({li['termine']} Termine, {li['vereine']} Vereine)"
+    except Exception:
+        pass
+
+    from zoneinfo import ZoneInfo
+    jetzt = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%d.%m.%Y, %H:%M")
+
+    return json.dumps({
+        "aufrufe_heute":   h_views,
+        "aufrufe_7d":      w_views,
+        "unique_heute":    h_unique,
+        "unique_7d":       w_unique,
+        "vereine_gesamt":  vereine_gesamt,
+        "vereine_aktiv":   vereine_aktiv,
+        "termine_kd":      termine_kd,
+        "letzter_import":  letzter_import,
+        "timestamp":       jetzt,
+    }, ensure_ascii=False), 200, {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
 
 
 @kalender_bp.route("/api/confirm-import", methods=["POST"])
