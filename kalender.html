@@ -1400,6 +1400,16 @@ async function loadChart(d){
   }
 }
 
+function niceScale(maxVal){
+  if(maxVal<=0)return{max:10,ticks:[5,10]};
+  const steps=[1,2,5,10,20,25,50,100,200,250,500,1000,2000,5000];
+  const step=steps.find(c=>Math.ceil(maxVal/c)<=4)||steps[steps.length-1];
+  const max=Math.ceil(maxVal/step)*step;
+  const ticks=[];
+  for(let v=step;v<=max;v+=step)ticks.push(v);
+  return{max,ticks};
+}
+
 function renderChart(el,tage,d){
   let bars;
   if(d===365){
@@ -1416,29 +1426,40 @@ function renderChart(el,tage,d){
       views: m.views, unique: m.unique
     }));
   } else {
-    bars=tage.map((day,i)=>{
+    bars=tage.map(day=>{
       const dt=new Date(day.datum+"T12:00:00");
-      const lbl=(dt.getDate())+"."+(dt.getMonth()+1)+".";
-      return {label:lbl, tooltip:day.datum+": "+day.views+" Aufrufe, "+day.unique+" Besucher",
+      return {label:(dt.getDate())+"."+(dt.getMonth()+1)+".",
+              tooltip:day.datum+": "+day.views+" Aufrufe, "+day.unique+" Besucher",
               views:day.views, unique:day.unique};
     });
   }
-  const maxVal=Math.max(...bars.map(b=>b.views),1);
+  const rawMax=Math.max(...bars.map(b=>b.views),1);
+  const {max:nMax,ticks}=niceScale(rawMax);
   const totalViews=bars.reduce((s,b)=>s+b.views,0);
   const totalUnique=bars.reduce((s,b)=>s+b.unique,0);
   const n=bars.length;
   const showEvery=d===7?1:d===30?5:1;
   const gap=d===365?5:d===30?2:3;
+  const H=90;
 
-  const barHtml=bars.map((b,i)=>{
-    const pct=Math.max(Math.round(b.views/maxVal*100),b.views>0?1:0);
+  const gridHtml=ticks.map(v=>{
+    const topPct=(1-v/nMax)*100;
+    return `<div style="position:absolute;top:${topPct}%;left:0;right:0;border-top:1px dashed color-mix(in srgb,var(--border) 80%,transparent);pointer-events:none"></div>`;
+  }).join('');
+
+  const yAxisHtml=ticks.map(v=>{
+    const topPct=(1-v/nMax)*100;
+    return `<div style="position:absolute;top:${topPct}%;right:3px;transform:translateY(-50%);font-size:9px;color:var(--text3);line-height:1;white-space:nowrap">${v}</div>`;
+  }).join('');
+
+  const barsHtml=bars.map((b,i)=>{
+    const pct=Math.max(Math.round(b.views/nMax*100),b.views>0?1:0);
+    return `<div style="flex:1;background:var(--tab);opacity:.82;height:${pct}%;min-height:${b.views>0?'2px':'0'};border-radius:2px 2px 0 0" title="${b.tooltip}"></div>`;
+  }).join('');
+
+  const labelsHtml=bars.map((b,i)=>{
     const showLbl=(i%showEvery===0)||(i===n-1);
-    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0">
-      <div style="width:100%;height:90px;display:flex;align-items:flex-end">
-        <div style="width:100%;background:var(--tab);opacity:.82;height:${pct}%;min-height:${b.views>0?'2px':'0'};border-radius:2px 2px 0 0" title="${b.tooltip}"></div>
-      </div>
-      <div style="font-size:9px;color:var(--text3);text-align:center;overflow:hidden;max-width:100%;white-space:nowrap;${showLbl?'':'visibility:hidden'}">${b.label}</div>
-    </div>`;
+    return `<div style="flex:1;font-size:9px;color:var(--text3);text-align:center;overflow:hidden;white-space:nowrap;${showLbl?'':'visibility:hidden'}">${b.label}</div>`;
   }).join('');
 
   el.innerHTML=`
@@ -1446,7 +1467,16 @@ function renderChart(el,tage,d){
       <span>Gesamt: <strong style="color:var(--text1)">${totalViews.toLocaleString("de")}</strong> Aufrufe</span>
       <span><strong style="color:var(--text1)">${totalUnique.toLocaleString("de")}</strong> Besucher</span>
     </div>
-    <div style="display:flex;align-items:flex-end;gap:${gap}px">${barHtml}</div>`;
+    <div style="display:flex;gap:0">
+      <div style="width:26px;height:${H}px;position:relative;flex-shrink:0">${yAxisHtml}</div>
+      <div style="flex:1;min-width:0">
+        <div style="height:${H}px;position:relative">
+          ${gridHtml}
+          <div style="display:flex;align-items:flex-end;height:100%;gap:${gap}px;position:relative;z-index:1">${barsHtml}</div>
+        </div>
+        <div style="display:flex;gap:${gap}px;margin-top:2px">${labelsHtml}</div>
+      </div>
+    </div>`;
 }
 
 async function loadPendingVereine(){
