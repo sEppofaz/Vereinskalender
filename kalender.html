@@ -517,8 +517,13 @@ let zeitraum="zukunft",aktOrte=new Set(),aktVereine=new Set(),aktLandkreis=null,
 let searchChips=[],srchResults=[];
 const secOpen={zeit:false,lk:false,ort:false,ver:false,hlp:false};
 const FAV_KEY="vk_favorites";
+const ACTIVE_FAV_KEY="vk_active_favs";
 let favorites=JSON.parse(localStorage.getItem(FAV_KEY)||"[]");
-let activeFavs=new Set(favorites.map(f=>f.type+":"+String(f.key)));
+let activeFavs=(()=>{
+  const stored=localStorage.getItem(ACTIVE_FAV_KEY);
+  if(stored===null)return new Set(favorites.map(f=>f.type+":"+String(f.key)));
+  try{return new Set(JSON.parse(stored));}catch(e){return new Set(favorites.map(f=>f.type+":"+String(f.key)));}
+})();
 const ADMIN=window.location.hash==="#admin";
 const RUBRIK_KEY="vk_rubrik";
 let aktRubrikSet=(()=>{try{const v=localStorage.getItem(RUBRIK_KEY);if(!v)return new Set();const p=JSON.parse(v);return new Set(Array.isArray(p)?p:(p&&p!=="alle"?[p]:[]));}catch(e){return new Set();}})();
@@ -682,6 +687,7 @@ function resetAll(){
   aktVereine=new Set(Object.keys(labels));
   searchChips=[];
   activeFavs=new Set();
+  saveActiveFavs();
   aktRubrikSet=new Set();
   localStorage.removeItem(RUBRIK_KEY);
   renderRubrikBar();
@@ -918,6 +924,7 @@ document.querySelectorAll("[data-z]").forEach(c=>c.onclick=()=>{
 /* ── Favoriten ── */
 function isFavorite(r){return favorites.some(f=>f.type===r.type&&String(f.key)===String(r.key));}
 function saveFavorites(){localStorage.setItem(FAV_KEY,JSON.stringify(favorites));}
+function saveActiveFavs(){localStorage.setItem(ACTIVE_FAV_KEY,JSON.stringify([...activeFavs]));}
 
 function renderFavBar(){
   const el=document.getElementById("fav-bar");
@@ -935,6 +942,7 @@ function toggleFavChip(type,key){
   const id=type+":"+key;
   if(activeFavs.has(id))activeFavs.delete(id);
   else activeFavs.add(id);
+  saveActiveFavs();
   renderFavBar();
   updateAllBadges();
   render();
@@ -959,6 +967,7 @@ function toggleFavorite(idx,ev){
     activeFavs.add(r.type+":"+String(r.key));
   }
   saveFavorites();
+  saveActiveFavs();
   renderFavBar();
   updateAllBadges();
   render();
