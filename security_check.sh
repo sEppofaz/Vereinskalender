@@ -25,6 +25,14 @@ SSH_FAILS=$(journalctl _SYSTEMD_UNIT=ssh.service --since "7 days ago" 2>/dev/nul
 SSH_FAILS=$(echo "$SSH_FAILS" | head -1 | tr -d '[:space:]')
 SSH_FAILS=${SSH_FAILS:-0}
 
+# Ausstehende Updates
+UPDATES_COUNT=$(apt list --upgradable 2>/dev/null | grep -c "/" || true)
+UPDATES_COUNT=$(echo "$UPDATES_COUNT" | head -1 | tr -d '[:space:]')
+UPDATES_COUNT=${UPDATES_COUNT:-0}
+SECURITY_COUNT=$(apt list --upgradable 2>/dev/null | grep -c "security" || true)
+SECURITY_COUNT=$(echo "$SECURITY_COUNT" | head -1 | tr -d '[:space:]')
+SECURITY_COUNT=${SECURITY_COUNT:-0}
+
 # Credential-Leak in Logs (HTTP-Access + Python-Variablenzuweisungen ausgeschlossen)
 LEAK=$(journalctl -u rename-webhook --since "7 days ago" 2>/dev/null \
   | grep -vE '"(GET|POST|PUT|DELETE|PATCH|HEAD) /' \
@@ -60,6 +68,7 @@ PIP_VULN=${PIP_VULN:-0}
 # Status-Symbole
 [ "$RENAME" = "active" ]  && RENAME_MSG="✅ rename-webhook: aktiv"  || RENAME_MSG="❌ rename-webhook: $RENAME"
 [ "$NGINX" = "active" ]   && NGINX_MSG="✅ nginx: aktiv"             || NGINX_MSG="❌ nginx: $NGINX"
+[ "$UPDATES_COUNT" -gt 0 ] && UPDATES_MSG="⚠️ Offene Updates: $UPDATES_COUNT (Security: $SECURITY_COUNT)" || UPDATES_MSG="✅ Alle Updates installiert"
 [ "$SSH_FAILS" -gt 1000 ] && SSH_MSG="⚠️ SSH Fehlversuche: $SSH_FAILS" || SSH_MSG="✅ SSH Fehlversuche: $SSH_FAILS"
 [ "$LEAK" -gt 0 ]         && LEAK_MSG="⚠️ Credential-Leak in Logs: $LEAK Treffer" || LEAK_MSG="✅ Logs: kein Credential-Leak"
 [ "$PIP_VULN" -gt 0 ]     && PIP_MSG="⚠️ pip audit: $PIP_VULN Schwachstellen" || PIP_MSG="✅ pip audit: keine Schwachstellen"
@@ -78,9 +87,10 @@ fi
 
 [ -n "$REBOOT" ] && REBOOT_LINE=$(printf "\n\n%s" "$REBOOT") || REBOOT_LINE=""
 
-MSG=$(printf "🔒 Security-Check %s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n📦 Disk: %s | RAM: %s\n🌐 Ports: %s%s" \
+MSG=$(printf "🔒 Security-Check %s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n📦 Disk: %s | RAM: %s\n🌐 Ports: %s%s" \
   "$DATE" \
   "$RENAME_MSG" "$NGINX_MSG" \
+  "$UPDATES_MSG" \
   "$SSH_MSG" "$F2B_MSG" \
   "$LEAK_MSG" "$PIP_MSG" \
   "$CERT_MSG" "$RATE_MSG" \
