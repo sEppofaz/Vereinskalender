@@ -289,6 +289,32 @@ def telegram_webhook():
         log(f"📅  /Termine-30 angefordert von Chat {chat_id}")
         threading.Thread(target=lambda: send_telegram(chat_id, _collect_alle_termine_30()), daemon=True).start()
 
+    elif text.lower() == "/help":
+        log(f"❓  /help angefordert von Chat {chat_id}")
+        help_text = (
+            "🤖 Verfügbare Befehle:\n\n"
+            "/status — Server-Status (Updates, Security, RAM, Disk)\n"
+            "/reboot — Server neu starten (meldet sich wenn wieder online)\n"
+            "/help — Diese Hilfe\n\n"
+            "⛪ Gottesdienste:\n"
+            "/pfarrbrief — Hölskofen & Paindlkofen\n"
+            "/pfarrbrief-hk — nur Hölskofen\n"
+            "/pfarrbrief-pk — nur Paindlkofen\n"
+            "/pfarrbrief-ok — Oberköllnbach\n\n"
+            "📅 Vereine:\n"
+            "/verein — Alle Vereinstermine\n"
+            "/verein-ff — FF Hölskofen\n"
+            "/verein-kp — Königstreue Patrioten\n"
+            "/termine-30 — Alle Termine (nächste 30 Tage)\n\n"
+            "💡 Ohne Befehl: Nachricht wird als Todo gespeichert"
+        )
+        send_telegram(chat_id, help_text)
+
+    elif text.lower() == "/reboot":
+        log(f"🔄  /reboot angefordert von Chat {chat_id}")
+        send_telegram(chat_id, "🔄 Server wird neu gestartet… Ich melde mich wenn er wieder online ist.")
+        threading.Thread(target=lambda: subprocess.run(["sudo", "reboot"], timeout=30), daemon=True).start()
+
     elif text and not text.startswith("/"):
         log(f"📝  Todo von Chat {chat_id}: {text[:60]}")
         def _do_todo(t=text, cid=chat_id):

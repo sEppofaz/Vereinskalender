@@ -25,9 +25,10 @@ SSH_FAILS=$(journalctl _SYSTEMD_UNIT=ssh.service --since "7 days ago" 2>/dev/nul
 SSH_FAILS=$(echo "$SSH_FAILS" | head -1 | tr -d '[:space:]')
 SSH_FAILS=${SSH_FAILS:-0}
 
-# Credential-Leak in Logs (HTTP-Access-Zeilen ausgeschlossen – kein False Positive)
+# Credential-Leak in Logs (HTTP-Access + Python-Variablenzuweisungen ausgeschlossen)
 LEAK=$(journalctl -u rename-webhook --since "7 days ago" 2>/dev/null \
   | grep -vE '"(GET|POST|PUT|DELETE|PATCH|HEAD) /' \
+  | grep -vE '\w+(token|password|secret)\w*\s*=' \
   | grep -ciE "(token|password|secret|api[._]key|bearer)" || true)
 LEAK=$(echo "$LEAK" | head -1 | tr -d '[:space:]')
 LEAK=${LEAK:-0}
