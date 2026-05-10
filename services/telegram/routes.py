@@ -328,7 +328,7 @@ def telegram_webhook():
         send_telegram(chat_id, "🔒 Sicherheitscheck läuft…")
         threading.Thread(
             target=lambda: subprocess.run(
-                ["sudo", "bash", "/opt/rename-webhook/security_check.sh"],
+                ["sudo", "bash", "/etc/pka/security_check.sh"],
                 timeout=120
             ),
             daemon=True,
