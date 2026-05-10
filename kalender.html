@@ -1602,8 +1602,10 @@ function renderAllAccounts(list){
   const alphaBar=`<div class="alpha-bar">${alpha.map(l=>
     `<button class="alpha-btn${used.has(l)?"":" inactive"}" onclick="${used.has(l)?`scrollToAccLetter('${l}')`:""}">${l}</button>`
   ).join("")}</div>`;
+  window._vereinMap={};
   const grouped={};
   list.forEach(v=>{
+    window._vereinMap[v.id]=v;
     const l=(v.verein_name[0]||"#").toUpperCase();
     if(!grouped[l])grouped[l]=[];
     grouped[l].push(v);
@@ -1632,7 +1634,7 @@ function renderAllAccounts(list){
           ${(v.users||[]).map(userLines).join("")}
         </div>
         <button class="ver-del-btn" style="border-color:var(--border2);color:var(--text2);flex-shrink:0"
-          onclick="openVereinEditModal(${v.id},'${escHtml(v.verein_name).replace(/'/g,"\\'")}',${JSON.stringify(v)})">&#9998;</button>
+          onclick="openVereinEditModal(${v.id},'${escHtml(v.verein_name).replace(/'/g,"\\'")}',_vereinMap[${v.id}])">&#9998;</button>
       </div>`).join("");
     return `<div class="ver-section-hdr" id="acc-letter-${l}">${l}</div><div class="filter-card" style="padding:0;margin-bottom:6px">${items}</div>`;
   }).join("");
