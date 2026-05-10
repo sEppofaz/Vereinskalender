@@ -294,6 +294,7 @@ def telegram_webhook():
         help_text = (
             "🤖 Verfügbare Befehle:\n\n"
             "/status — Server-Status (Updates, Security, RAM, Disk)\n"
+            "/sicherheitscheck — Sicherheitscheck jetzt ausführen\n"
             "/reboot — Server neu starten (meldet sich wenn wieder online)\n"
             "/help — Diese Hilfe\n\n"
             "⛪ Gottesdienste:\n"
@@ -309,6 +310,17 @@ def telegram_webhook():
             "💡 Ohne Befehl: Nachricht wird als Todo gespeichert"
         )
         send_telegram(chat_id, help_text)
+
+    elif text.lower() == "/sicherheitscheck":
+        log(f"🔒  /sicherheitscheck angefordert von Chat {chat_id}")
+        send_telegram(chat_id, "🔒 Sicherheitscheck läuft…")
+        threading.Thread(
+            target=lambda: subprocess.run(
+                ["sudo", "bash", "/opt/rename-webhook/security_check.sh"],
+                timeout=120
+            ),
+            daemon=True,
+        ).start()
 
     elif text.lower() == "/reboot":
         log(f"🔄  /reboot angefordert von Chat {chat_id}")
