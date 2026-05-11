@@ -226,6 +226,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <span class="ver-lbl" style="margin-right:0">v1.8</span>
       <span style="font-size:9px;color:rgba(255,255,255,.28);letter-spacing:.2px;line-height:1">a sEpp-App</span>
     </div>
+    <button class="refresh-btn" onclick="showInfoModal()" title="Info" style="font-size:17px">&#8505;</button>
     <button class="refresh-btn" id="admin-import-btn" onclick="toggleImport()" title="Import" style="display:none">&#128229;</button>
     <a class="refresh-btn" id="verein-admin-btn" href="/verein/dashboard" title="Mein Verein" style="display:none;text-decoration:none">&#9998;</a>
   </div>
@@ -312,64 +313,6 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
         </div>
       </div>
 
-      <!-- Hilfe – immer als letzte Section behalten -->
-      <div class="f-section" style="border-top:1.5px solid var(--border)">
-        <button class="f-toggle" onclick="toggleSection('hlp')">
-          <span class="f-name">&#8505; Info</span>
-          <span class="f-arrow" id="hlp-arrow">&#9660;</span>
-        </button>
-        <div class="f-content" id="hlp-content" style="padding-bottom:4px">
-          <div class="help-row" style="padding:8px 0 12px;border-bottom:1.5px solid var(--border);margin-bottom:4px">
-            <span class="help-icon">&#127974;</span>
-            <div><strong><a href="/verein/register" style="color:var(--accent);text-decoration:none">Euren Verein eintragen</a></strong><span>Termine selbst eintragen und verwalten &ndash; kostenlos, direkt, ohne Wartezeit. <a href="/verein/register" style="color:var(--accent);font-weight:600">Jetzt registrieren &rarr;</a><br><span style="color:var(--text3);font-size:.9em">Bereits registriert? <a href="/verein/login" style="color:var(--accent)">Zum Login &rarr;</a></span></span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0 12px;border-bottom:1.5px solid var(--border);margin-bottom:4px">
-            <span class="help-icon">&#128231;</span>
-            <div><strong>Eure Termine eintragen lassen</strong><span>Eure Termine sind noch nicht enthalten? Einfach das Jahresprogramm als PDF mit Angabe Eurer PLZ an <a href="mailto:Vereinskalender@icloud.com" style="color:var(--accent);text-decoration:none;font-weight:600">Vereinskalender@icloud.com</a> schicken &#8211; wir k&#252;mmern uns zeitnah um den Upload. Auch Termine aus Pfarreien/Pfarrbriefen k&#246;nnen hochgeladen werden.</span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0">
-            <span class="help-icon">&#128197;</span>
-            <div><strong>Kalender-Import</strong><span>Jeden Termin per &#128197;-Symbol direkt in den eigenen Kalender &#252;bernehmen &ndash; funktioniert mit iPhone, Android, Outlook und allen g&#228;ngigen Kalender-Apps.</span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0">
-            <span class="help-icon">&#8987;&#xFE0F;</span>
-            <div><strong>Kalender-Abo</strong><span>Termine automatisch im Kalender &ndash; aktualisiert sich alle 6&nbsp;Stunden. Funktioniert mit iPhone, Android, Smartwatch, Google&nbsp;Kalender und Outlook. Auf dem iPhone &ouml;ffnen &rarr; in Einstellungen best&auml;tigen &rarr; fertig.<br><br>
-            <a href="webcal://vereinskalender.online/api/ical/feed" style="color:var(--accent);text-decoration:none;font-weight:600">&#127775; Alle Termine abonnieren</a><br>
-            <a href="#" onclick="openFavIcalFeed();return false;" style="color:var(--accent);text-decoration:none;font-weight:600">&#11088; Nur meine Favoriten abonnieren</a></span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0">
-            <span class="help-icon">&#128172;</span>
-            <div><strong>Terminerinnerungen per Telegram Messenger</strong><span>Kostenloser Bot &ndash; einmal einrichten, fertig. Du erh&auml;ltst jeden Abend um <strong>18:00 Uhr</strong> eine Erinnerung, wenn einer deiner Vereine am n&auml;chsten Tag einen Termin hat.<br><br>
-            <a href="https://t.me/Vereinskalender_bot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">&#128172; Jetzt abonnieren &rarr;</a><br><br>
-            Im Bot <em>/abo</em> tippen, Verein ausw&auml;hlen &ndash; fertig. Jederzeit mit <em>/stop</em> abmelden.<br><br>
-            <span style="color:#aeaeb2;font-size:.85em">Andere Messenger (WhatsApp, Signal&nbsp;u.&nbsp;a.) sind aktuell nicht angebunden &ndash; da dieser Dienst kostenlos und werbefrei betrieben wird, setzen wir auf Telegram als einzige kostenlos integrierbare L&ouml;sung.</span></span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0">
-            <span class="help-icon">&#128269;</span>
-            <div><strong>Suche</strong><span>Verein oder Ort direkt eintippen &ndash; Terminliste filtert live. Vorschlag antippen f&uuml;r Chip-Filter (favorisierbar). Suchfeld leeren um Filter-Optionen wieder anzuzeigen.</span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0">
-            <span class="help-icon">&#8987;</span>
-            <div><strong>Zeitraum</strong><span>Bestimmt den angezeigten Zeitraum: <strong>K&#252;nftig</strong> zeigt alle noch ausstehenden Termine ab heute. <strong>30 Tage / 3 Monate / 1 Jahr</strong> grenzt die Anzeige auf das jeweilige Zeitfenster ab heute ein. Mit <strong>Alle</strong> werden auch bereits vergangene Termine angezeigt &ndash; praktisch um nachzuschauen, was zuletzt stattgefunden hat.</span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0">
-            <span class="help-icon">&#128507;</span>
-            <div><strong>Region</strong><span>Erscheint wenn Vereine aus mehreren Landkreisen vorhanden sind &#8211; zeigt nur Vereine des gew&#228;hlten Landkreises.</span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0">
-            <span class="help-icon">&#127968;</span>
-            <div><strong>Ortschaft</strong><span>Erscheint wenn mehrere Vereine einer Ortschaft vorhanden sind. Mehrere Ortschaften k&#246;nnen gleichzeitig ausgew&#228;hlt werden.</span></div>
-          </div>
-          <div class="help-row" style="padding:8px 0;border-bottom:none">
-            <span class="help-icon">&#127974;</span>
-            <div><strong>Verein</strong><span>Einzelne Vereine gezielt ein- oder ausblenden.</span></div>
-          </div>
-          <div class="help-row" style="padding:12px 0 8px;border-top:1.5px solid var(--border);margin-top:4px;border-bottom:none">
-            <span class="help-icon">&#9878;</span>
-            <div><strong>Impressum</strong><span>Josef Fischer &middot; H&ouml;lskofen 13 &middot; 84092 Bayerbach b. Ergoldsbach<br><a href="mailto:Vereinskalender@icloud.com" style="color:var(--accent);text-decoration:none">Vereinskalender@icloud.com</a></span></div>
-          </div>
-        </div>
-      </div>
       <div style="padding:8px 14px;text-align:center;border-top:.5px solid var(--border)">
         <button onclick="toggleFilterCard()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;padding:4px 16px;border-radius:8px">&#9650; einklappen</button>
       </div>
@@ -2207,6 +2150,72 @@ function filterRemapSearch(newKey,query){
       <span style="color:#9ca3af;font-size:11px">${escHtml(l.key)}</span>
     </div>`).join("");
   res.style.display="block";
+}
+
+function showInfoModal(){
+  const existing=document.getElementById("info-modal");
+  if(existing){existing.remove();return;}
+  const m=document.createElement("div");
+  m.id="info-modal";
+  m.className="modal-overlay";
+  m.onclick=e=>{if(e.target===m)m.remove();};
+  m.innerHTML=`
+    <div class="modal-sheet" style="max-height:88dvh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="modal-title" style="margin-bottom:0">&#8505; Info &amp; Hilfe</div>
+        <button onclick="document.getElementById('info-modal').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text2);line-height:1;padding:0 2px">&times;</button>
+      </div>
+      <div class="help-row" style="padding:8px 0 12px;border-bottom:1.5px solid var(--border);margin-bottom:4px">
+        <span class="help-icon">&#127974;</span>
+        <div><strong><a href="/verein/register" style="color:var(--accent);text-decoration:none">Euren Verein eintragen</a></strong><span>Termine selbst eintragen und verwalten &ndash; kostenlos, direkt, ohne Wartezeit. <a href="/verein/register" style="color:var(--accent);font-weight:600">Jetzt registrieren &rarr;</a><br><span style="color:var(--text3);font-size:.9em">Bereits registriert? <a href="/verein/login" style="color:var(--accent)">Zum Login &rarr;</a></span></span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0 12px;border-bottom:1.5px solid var(--border);margin-bottom:4px">
+        <span class="help-icon">&#128231;</span>
+        <div><strong>Eure Termine eintragen lassen</strong><span>Jahresprogramm als PDF mit PLZ an <a href="mailto:Vereinskalender@icloud.com" style="color:var(--accent);text-decoration:none;font-weight:600">Vereinskalender@icloud.com</a> schicken &ndash; wir k&uuml;mmern uns zeitnah. Auch Pfarrbriefe m&ouml;glich.</span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0">
+        <span class="help-icon">&#128197;</span>
+        <div><strong>Kalender-Import</strong><span>Jeden Termin per &#128197;-Symbol direkt in den eigenen Kalender &ndash; iPhone, Android, Outlook.</span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0">
+        <span class="help-icon">&#8987;&#xFE0F;</span>
+        <div><strong>Kalender-Abo</strong><span>Aktualisiert sich alle 6&nbsp;Stunden. iPhone, Android, Smartwatch, Google&nbsp;Kalender, Outlook.<br><br>
+        <a href="webcal://vereinskalender.online/api/ical/feed" style="color:var(--accent);text-decoration:none;font-weight:600">&#127775; Alle Termine abonnieren</a><br>
+        <a href="#" onclick="openFavIcalFeed();document.getElementById('info-modal')?.remove();return false;" style="color:var(--accent);text-decoration:none;font-weight:600">&#11088; Nur meine Favoriten abonnieren</a></span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0">
+        <span class="help-icon">&#128172;</span>
+        <div><strong>Terminerinnerungen per Telegram</strong><span>T&auml;glich 18:00 Uhr &ndash; wenn ein Favorit-Verein morgen Termin hat.<br><br>
+        <a href="https://t.me/Vereinskalender_bot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600">&#128172; Jetzt abonnieren &rarr;</a><br><br>
+        Im Bot <em>/abo</em> tippen, Verein w&auml;hlen &ndash; fertig. Abmelden mit <em>/stop</em>.</span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0">
+        <span class="help-icon">&#128269;</span>
+        <div><strong>Suche</strong><span>Verein oder Ort eintippen &ndash; filtert live. Vorschlag antippen f&uuml;r Chip-Filter.</span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0">
+        <span class="help-icon">&#8987;</span>
+        <div><strong>Zeitraum</strong><span><strong>K&uuml;nftig</strong> ab heute &middot; <strong>30T/3M/1J</strong> begrenzt &middot; <strong>Alle</strong> inkl. vergangene Termine.</span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0">
+        <span class="help-icon">&#128507;</span>
+        <div><strong>Region</strong><span>Erscheint bei mehreren Landkreisen &ndash; zeigt nur Vereine des gew&auml;hlten Landkreises.</span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0">
+        <span class="help-icon">&#127968;</span>
+        <div><strong>Ortschaft</strong><span>Mehrfachauswahl m&ouml;glich. Erscheint wenn mehrere Vereine einer Ortschaft vorhanden sind.</span></div>
+      </div>
+      <div class="help-row" style="padding:8px 0;border-bottom:none">
+        <span class="help-icon">&#127974;</span>
+        <div><strong>Verein</strong><span>Einzelne Vereine gezielt ein- oder ausblenden.</span></div>
+      </div>
+      <div class="help-row" style="padding:12px 0 8px;border-top:1.5px solid var(--border);margin-top:4px;border-bottom:none">
+        <span class="help-icon">&#9878;</span>
+        <div><strong>Impressum</strong><span>Josef Fischer &middot; H&ouml;lskofen 13 &middot; 84092 Bayerbach b. Ergoldsbach<br><a href="mailto:Vereinskalender@icloud.com" style="color:var(--accent);text-decoration:none">Vereinskalender@icloud.com</a></span></div>
+      </div>
+      <button onclick="document.getElementById('info-modal').remove()" style="width:100%;margin-top:16px;padding:12px;background:none;border:1.5px solid var(--border2);border-radius:12px;font-size:14px;color:var(--text2);cursor:pointer">Schlie&szlig;en</button>
+    </div>`;
+  document.body.appendChild(m);
 }
 
 function setOrtDecision(idx,decision){
