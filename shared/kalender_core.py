@@ -83,6 +83,36 @@ def _make_verein_key(verein_name: str) -> str:
     return re.sub(r"\s+", "_", key.strip())[:30] or "verein"
 
 
+def _levenshtein(a: str, b: str) -> int:
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i]
+        for j, cb in enumerate(b, 1):
+            curr.append(min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = curr
+    return prev[-1]
+
+
+def find_similar_keys(new_key: str, existing_labels: dict) -> list:
+    """Gibt bestehende Keys zurück die dem new_key ähneln (Duplikat-Verdacht)."""
+    result = []
+    for key, name in existing_labels.items():
+        if key == new_key:
+            continue
+        shorter, longer = (new_key, key) if len(new_key) <= len(key) else (key, new_key)
+        is_prefix = longer.startswith(shorter + "_") or longer.startswith(shorter + " ")
+        if is_prefix:
+            result.append({"key": key, "name": name})
+            continue
+        if len(shorter) >= 4:
+            threshold = max(1, len(shorter) // 5)
+            if _levenshtein(new_key, key) <= threshold:
+                result.append({"key": key, "name": name})
+    return result
+
+
 def import_pdf_bytes(file_bytes: bytes, suffix: str) -> dict:
     """Ruft Claude Vision auf, gibt {"alle": [...], "auto_plz": "..."} zurück."""
     if suffix in {".heic", ".heif"}:

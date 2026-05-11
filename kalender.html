@@ -2105,6 +2105,18 @@ function showOrtschaftenConfirm(data){
   _pendingDecisions={};
   _pendingOrtschaften.forEach(o=>_pendingDecisions[o]="whitelist");
 
+  const dupWarnings=(data.neue_vereine_ohne_ortschaft||[]).filter(v=>v.similar_to&&v.similar_to.length);
+  const dupBlock=dupWarnings.length?`
+    <div style="background:#fff8e1;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:6px">&#9888;&#65039; Mögliche Duplikate erkannt</div>
+      ${dupWarnings.map(v=>`
+        <div style="font-size:12px;color:#78350f;margin-bottom:4px">
+          <b>${escHtml(v.name)}</b> (Key: <code>${escHtml(v.key)}</code>) ähnelt:
+          ${v.similar_to.map(s=>`<code>${escHtml(s.key)}</code> (${escHtml(s.name)})`).join(", ")}
+        </div>`).join("")}
+      <div style="font-size:11px;color:#a16207;margin-top:4px">Bitte prüfen ob das derselbe Verein ist. Import trotzdem möglich.</div>
+    </div>`:""
+
   const modal=document.createElement("div");
   modal.id="ort-confirm-modal";
   modal.className="modal-overlay";
@@ -2115,6 +2127,7 @@ function showOrtschaftenConfirm(data){
         ${_pendingOrtschaften.length} neue Ortschaft${_pendingOrtschaften.length>1?"en":""} erkannt &ndash; aufnehmen oder ablehnen?<br>
         <small>${data.preview.termine_count} Termine &middot; ${data.preview.vereine.length} Verein${data.preview.vereine.length!==1?"e":""}</small>
       </div>
+      ${dupBlock}
       ${_pendingOrtschaften.map((o,i)=>`
         <div class="ort-row" id="ort-row-${i}">
           <span class="ort-name">&#128205; ${o}</span>

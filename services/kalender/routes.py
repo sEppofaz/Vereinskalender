@@ -23,6 +23,7 @@ from shared.kalender_core import (
     _PG_LABELS,
     _do_save_import,
     _make_verein_key,
+    find_similar_keys,
     import_pdf_bytes,
     log,
     lookup_plz,
@@ -133,7 +134,11 @@ def upload_kalender():
             parts     = vname.strip().split()
             last_word = parts[-1].split("/")[0] if parts else ""
             if len(last_word) <= 4 or last_word not in known_white:
-                neue_vereine_ohne_ort.append({"key": vkey, "name": vname})
+                similar = find_similar_keys(vkey, data.get("_labels", {}))
+                entry = {"key": vkey, "name": vname}
+                if similar:
+                    entry["similar_to"] = similar
+                neue_vereine_ohne_ort.append(entry)
 
         if neue_orts or neue_vereine_ohne_ort:
             import_id = str(_uuid.uuid4())
