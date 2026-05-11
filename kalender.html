@@ -218,7 +218,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <rect x="15" y="27" width="19" height="7"  rx="2.5" fill="#1abc9c"/>
   </svg>
   <div class="hdr-text">
-    <h1>Vereinskalender / Veranstaltungen<br><span style="font-size:11px;font-weight:400;opacity:.6;letter-spacing:.1px">die Termine deiner Region</span></h1>
+    <h1>Vereinskalender / Veranstaltungen</h1>
     <p id="hdr-sub">Lade&#8230;</p>
   </div>
   <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
@@ -570,7 +570,7 @@ async function load(){
   const nVereine=Object.keys(labels).length;
   const nOrte=Object.keys(allOrteAll).length;
   document.getElementById("hdr-sub").textContent=
-    nTermine+" Termine · "+nVereine+" Vereine · "+nOrte+" Ortschaften";
+    "die Termine deiner Region · "+nTermine+" Termine · "+nVereine+" Vereine · "+nOrte+" Ortschaften";
   updateAllBadges();
 }
 
