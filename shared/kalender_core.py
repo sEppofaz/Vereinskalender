@@ -226,7 +226,8 @@ def import_pdf_bytes(file_bytes: bytes, suffix: str) -> dict:
 
 
 def _do_save_import(alle: list, auto_plz: str, form_plz: str, data: dict,
-                    verein_ortschaften: dict | None = None) -> tuple:
+                    verein_ortschaften: dict | None = None,
+                    key_remappings: dict | None = None) -> tuple:
     """Speichert importierte Termine in vereinstermine.json (data wird mutiert und gespeichert)."""
     labels = data.get("_labels", {"ff": "FF Hölskofen", "kp": "Königstreue Patrioten"})
     heute  = datetime.now().strftime("%Y-%m-%d")
@@ -240,7 +241,11 @@ def _do_save_import(alle: list, auto_plz: str, form_plz: str, data: dict,
     result_vereine = []
     for verein_name, termine in by_verein.items():
         key = _make_verein_key(verein_name)
-        labels[key] = verein_name
+        remapped = key_remappings and key in key_remappings
+        if remapped:
+            key = key_remappings[key]  # merge into existing verein
+        else:
+            labels[key] = verein_name
         bestehende = [t for t in data.get(key, []) if t.get("datum", "") >= heute]
         ex_bez = {(t["datum"], t.get("bezeichnung", "")) for t in bestehende}
         ex_dzo = {(t["datum"], t.get("uhrzeit", ""), t.get("ort", ""))

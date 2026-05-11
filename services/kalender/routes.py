@@ -469,6 +469,7 @@ def api_confirm_import():
     confirm_list       = [o.strip() for o in body.get("confirm", []) if o.strip()]
     reject_list        = [o.strip() for o in body.get("reject",  []) if o.strip()]
     verein_ortschaften = {k: v for k, v in (body.get("verein_ortschaften") or {}).items() if v and v.strip()}
+    key_remappings     = {k: v for k, v in (body.get("key_remappings") or {}).items() if k and v}
 
     pending_path = Path(f"/tmp/vk_pending_{import_id}.json")
     if not pending_path.exists():
@@ -494,7 +495,7 @@ def api_confirm_import():
             blacklist.add(o); whitelist.discard(o)
         data["_ortschaften"] = {"whitelist": sorted(whitelist), "blacklist": sorted(blacklist)}
 
-        result_vereine, total = _do_save_import(alle, auto_plz, form_plz, data, verein_ortschaften)
+        result_vereine, total = _do_save_import(alle, auto_plz, form_plz, data, verein_ortschaften, key_remappings or None)
         pending_path.unlink(missing_ok=True)
         log(f"✅  Confirm-Import: {total} Termine, +{len(confirm_list)} whitelist, +{len(reject_list)} blacklist")
 

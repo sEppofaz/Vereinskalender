@@ -2097,7 +2097,7 @@ async function deleteTermin(idx){
 }
 
 /* ── Ortschaften-Bestätigungs-Modal ── */
-let _pendingId=null,_pendingOrtschaften=[],_pendingDecisions={};
+let _pendingId=null,_pendingOrtschaften=[],_pendingDecisions={},_pendingKeyRemappings={};
 
 function showOrtschaftenConfirm(data){
   _pendingId=data.import_id;
@@ -2106,15 +2106,29 @@ function showOrtschaftenConfirm(data){
   _pendingOrtschaften.forEach(o=>_pendingDecisions[o]="whitelist");
 
   const dupWarnings=(data.neue_vereine_ohne_ortschaft||[]).filter(v=>v.similar_to&&v.similar_to.length);
+  _pendingKeyRemappings={};
+  dupWarnings.forEach(v=>{ _pendingKeyRemappings[v.key]=null; }); // null = eigener Verein (default)
   const dupBlock=dupWarnings.length?`
     <div style="background:#fff8e1;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 12px;margin-bottom:12px">
-      <div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:6px">&#9888;&#65039; Mögliche Duplikate erkannt</div>
+      <div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:6px">&#9888;&#65039; Mögliche Duplikate – bitte wählen</div>
       ${dupWarnings.map(v=>`
-        <div style="font-size:12px;color:#78350f;margin-bottom:4px">
-          <b>${escHtml(v.name)}</b> (Key: <code>${escHtml(v.key)}</code>) ähnelt:
-          ${v.similar_to.map(s=>`<code>${escHtml(s.key)}</code> (${escHtml(s.name)})`).join(", ")}
+        <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #fcd34d">
+          <div style="font-size:12px;color:#78350f;margin-bottom:5px">
+            <b>${escHtml(v.name)}</b> ähnelt einem bestehenden Verein:
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${v.similar_to.map(s=>`
+              <button onclick="setKeyRemap(${JSON.stringify(v.key)},${JSON.stringify(s.key)},this)"
+                style="padding:5px 10px;border-radius:8px;border:1.5px solid #f59e0b;background:#fff;font-size:12px;cursor:pointer;color:#92400e">
+                &#10144; Zu „${escHtml(s.name)}" hinzufügen
+              </button>`).join("")}
+            <button onclick="setKeyRemap(${JSON.stringify(v.key)},null,this)"
+              style="padding:5px 10px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer;color:#374151;font-weight:600">
+              &#10010; Als eigenen Verein anlegen
+            </button>
+          </div>
+          <div id="remap-hint-${escHtml(v.key)}" style="font-size:11px;color:#a16207;margin-top:4px">&#9432; Noch keine Wahl getroffen – bitte auswählen</div>
         </div>`).join("")}
-      <div style="font-size:11px;color:#a16207;margin-top:4px">Bitte prüfen ob das derselbe Verein ist. Import trotzdem möglich.</div>
     </div>`:""
 
   const modal=document.createElement("div");
@@ -2142,6 +2156,19 @@ function showOrtschaftenConfirm(data){
   document.body.appendChild(modal);
 }
 
+function setKeyRemap(newKey,targetKey,btn){
+  _pendingKeyRemappings[newKey]=targetKey;
+  const container=btn.closest("div[style*='margin-bottom:10px']");
+  container.querySelectorAll("button").forEach(b=>{
+    b.style.background=b===btn?"#fef3c7":"#fff";
+    b.style.fontWeight=b===btn?"700":"400";
+  });
+  const hint=document.getElementById("remap-hint-"+newKey);
+  if(hint) hint.textContent=targetKey
+    ? `✓ Wird zu „${targetKey}" hinzugefügt`
+    : "✓ Wird als eigener Verein angelegt";
+}
+
 function setOrtDecision(idx,decision){
   _pendingDecisions[_pendingOrtschaften[idx]]=decision;
   const row=document.getElementById("ort-row-"+idx);
@@ -2151,16 +2178,23 @@ function setOrtDecision(idx,decision){
 }
 
 async function doConfirmImport(){
+  // Prüfen ob alle Duplikat-Entscheidungen getroffen wurden
+  const undecided=Object.entries(_pendingKeyRemappings).filter(([,v])=>v===null&&v!==undefined);
+  // null = "eigener Verein" ist eine gültige Entscheidung; undefined = noch nicht entschieden
+  // Da wir null als default setzen (eigener Verein), sind alle immer entschieden.
   const token=sessionStorage.getItem("ut")||"";
   const confirm=Object.entries(_pendingDecisions).filter(([,v])=>v==="whitelist").map(([k])=>k);
   const reject =Object.entries(_pendingDecisions).filter(([,v])=>v==="blacklist").map(([k])=>k);
+  const key_remappings=Object.fromEntries(
+    Object.entries(_pendingKeyRemappings).filter(([,v])=>v!==null)
+  );
   const btn=document.getElementById("ort-confirm-btn");
   btn.disabled=true;btn.textContent="Speichere…";
   try{
     const res=await fetch("/api/confirm-import",{
       method:"POST",
       headers:{"Content-Type":"application/json","X-Upload-Token":token},
-      body:JSON.stringify({import_id:_pendingId,confirm,reject}),
+      body:JSON.stringify({import_id:_pendingId,confirm,reject,key_remappings}),
     });
     const d=await res.json();
     document.getElementById("ort-confirm-modal").remove();
