@@ -394,7 +394,9 @@ def telegram_webhook():
             from shared.vk_db import db_conn
             from shared.vk_mail import send_welcome_email, send_rejected_email
             try:
-                verein_id = int(cb_data.split(":", 1)[1])
+                parts = cb_data.split(":", 2)
+                verein_id = int(parts[1])
+                expected_name = parts[2] if len(parts) > 2 else None
                 approve = cb_data.startswith("verein_approve:")
                 with db_conn() as conn:
                     row = conn.execute(
@@ -405,6 +407,8 @@ def telegram_webhook():
                     ).fetchone()
                     if not row:
                         answer_telegram_callback(cb_id, "⚠️ Bereits bearbeitet")
+                    elif expected_name and row["verein_name"][:30].replace(":", "_") != expected_name:
+                        answer_telegram_callback(cb_id, "⚠️ ID-Kollision – Verein nicht mehr identisch. Bitte neu prüfen.")
                     else:
                         if approve:
                             conn.execute(

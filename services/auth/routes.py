@@ -132,8 +132,8 @@ def _telegram_approve_msg(verein_id: int, verein_name: str, email: str,
             "\n".join(lines),
             [
                 [
-                    {"text": "✅ Freigeben", "callback_data": f"verein_approve:{verein_id}"},
-                    {"text": "❌ Ablehnen", "callback_data": f"verein_reject:{verein_id}"},
+                    {"text": "✅ Freigeben", "callback_data": f"verein_approve:{verein_id}:{verein_name[:30].replace(':', '_')}"},
+                    {"text": "❌ Ablehnen", "callback_data": f"verein_reject:{verein_id}:{verein_name[:30].replace(':', '_')}"},
                 ]
             ],
         )
