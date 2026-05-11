@@ -152,12 +152,17 @@ def upload_kalender():
                 }, ensure_ascii=False)
             )
             log(f"⏳  Upload ausstehend: {len(neue_orts)} Ortschaften, {len(neue_vereine_ohne_ort)} Vereine ohne Heimatort")
+            all_labels_list = sorted(
+                [{"key": k, "name": v} for k, v in data.get("_labels", {}).items()],
+                key=lambda x: x["name"].lower()
+            )
             return (
                 json.dumps({
                     "pending":                     True,
                     "import_id":                   import_id,
                     "pending_ortschaften":         neue_orts,
                     "neue_vereine_ohne_ortschaft": neue_vereine_ohne_ort,
+                    "all_labels_list":             all_labels_list,
                     "preview": {
                         "termine_count": len(alle),
                         "vereine":       sorted({t.get("verein", "") for t in alle}),

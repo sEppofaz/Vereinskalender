@@ -2097,37 +2097,51 @@ async function deleteTermin(idx){
 }
 
 /* ── Ortschaften-Bestätigungs-Modal ── */
-let _pendingId=null,_pendingOrtschaften=[],_pendingDecisions={},_pendingKeyRemappings={};
+let _pendingId=null,_pendingOrtschaften=[],_pendingDecisions={},_pendingKeyRemappings={},_allLabelsList=[];
 
 function showOrtschaftenConfirm(data){
   _pendingId=data.import_id;
   _pendingOrtschaften=data.pending_ortschaften;
+  _allLabelsList=data.all_labels_list||[];
   _pendingDecisions={};
   _pendingOrtschaften.forEach(o=>_pendingDecisions[o]="whitelist");
 
   const dupWarnings=(data.neue_vereine_ohne_ortschaft||[]).filter(v=>v.similar_to&&v.similar_to.length);
   _pendingKeyRemappings={};
-  dupWarnings.forEach(v=>{ _pendingKeyRemappings[v.key]=null; }); // null = eigener Verein (default)
+  dupWarnings.forEach(v=>{ _pendingKeyRemappings[v.key]=null; });
+
   const dupBlock=dupWarnings.length?`
     <div style="background:#fff8e1;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 12px;margin-bottom:12px">
-      <div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:6px">&#9888;&#65039; Mögliche Duplikate – bitte wählen</div>
+      <div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:8px">&#9888;&#65039; M&ouml;gliche Duplikate &ndash; bitte w&auml;hlen</div>
       ${dupWarnings.map(v=>`
         <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #fcd34d">
-          <div style="font-size:12px;color:#78350f;margin-bottom:5px">
-            <b>${escHtml(v.name)}</b> ähnelt einem bestehenden Verein:
+          <div style="font-size:12px;color:#78350f;margin-bottom:6px">
+            <b>${escHtml(v.name)}</b> &ndash; &auml;hnliche bestehende Vereine:
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
             ${v.similar_to.map(s=>`
-              <button onclick="setKeyRemap(${JSON.stringify(v.key)},${JSON.stringify(s.key)},this)"
+              <button onclick="setKeyRemap(${JSON.stringify(v.key)},${JSON.stringify(s.key)})"
+                data-newkey="${escHtml(v.key)}" data-targetkey="${escHtml(s.key)}"
                 style="padding:5px 10px;border-radius:8px;border:1.5px solid #f59e0b;background:#fff;font-size:12px;cursor:pointer;color:#92400e">
-                &#10144; Zu „${escHtml(s.name)}" hinzufügen
+                &#10144; Zu &bdquo;${escHtml(s.name)}&ldquo;
               </button>`).join("")}
-            <button onclick="setKeyRemap(${JSON.stringify(v.key)},null,this)"
-              style="padding:5px 10px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer;color:#374151;font-weight:600">
-              &#10010; Als eigenen Verein anlegen
+            <button onclick="setKeyRemap(${JSON.stringify(v.key)},null)"
+              data-newkey="${escHtml(v.key)}" data-targetkey=""
+              style="padding:5px 10px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer;color:#374151">
+              &#10010; Eigener Verein
             </button>
           </div>
-          <div id="remap-hint-${escHtml(v.key)}" style="font-size:11px;color:#a16207;margin-top:4px">&#9432; Noch keine Wahl getroffen – bitte auswählen</div>
+          <div style="position:relative;margin-bottom:5px">
+            <input id="remap-input-${escHtml(v.key)}" type="text"
+              placeholder="Oder Verein suchen&hellip;"
+              oninput="filterRemapSearch(${JSON.stringify(v.key)},this.value)"
+              onblur="setTimeout(()=>{const r=document.getElementById('remap-results-${escHtml(v.key)}');if(r)r.style.display='none'},180)"
+              style="width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none">
+            <div id="remap-results-${escHtml(v.key)}"
+              style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #d1d5db;border-top:none;border-radius:0 0 8px 8px;max-height:160px;overflow-y:auto;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,.12)">
+            </div>
+          </div>
+          <div id="remap-hint-${escHtml(v.key)}" style="font-size:11px;color:#a16207">&#9432; Noch nicht gew&auml;hlt &ndash; Vorschlag anklicken oder suchen</div>
         </div>`).join("")}
     </div>`:""
 
@@ -2156,17 +2170,43 @@ function showOrtschaftenConfirm(data){
   document.body.appendChild(modal);
 }
 
-function setKeyRemap(newKey,targetKey,btn){
+function setKeyRemap(newKey,targetKey){
   _pendingKeyRemappings[newKey]=targetKey;
-  const container=btn.closest("div[style*='margin-bottom:10px']");
-  container.querySelectorAll("button").forEach(b=>{
-    b.style.background=b===btn?"#fef3c7":"#fff";
-    b.style.fontWeight=b===btn?"700":"400";
+  document.querySelectorAll(`[data-newkey="${newKey}"]`).forEach(b=>{
+    const match=targetKey===null?b.dataset.targetkey==="":b.dataset.targetkey===targetKey;
+    b.style.background=match?"#fef3c7":"#fff";
+    b.style.fontWeight=match?"700":"400";
+    b.style.borderColor=match?(targetKey===null?"#d1d5db":"#f59e0b"):(targetKey===null?"#d1d5db":"#f59e0b");
   });
+  const inp=document.getElementById("remap-input-"+newKey);
+  const res=document.getElementById("remap-results-"+newKey);
+  if(res) res.style.display="none";
+  if(inp){
+    const label=targetKey?(_allLabelsList.find(l=>l.key===targetKey)?.name||targetKey):"";
+    inp.value=label;
+  }
   const hint=document.getElementById("remap-hint-"+newKey);
-  if(hint) hint.textContent=targetKey
-    ? `✓ Wird zu „${targetKey}" hinzugefügt`
-    : "✓ Wird als eigener Verein angelegt";
+  if(hint){
+    const name=targetKey?(_allLabelsList.find(l=>l.key===targetKey)?.name||targetKey):null;
+    hint.textContent=name?`✓ Wird zu „${name}" hinzugefügt`:"✓ Wird als eigener Verein angelegt";
+    hint.style.color=targetKey?"#15803d":"#a16207";
+  }
+}
+
+function filterRemapSearch(newKey,query){
+  const res=document.getElementById("remap-results-"+newKey);
+  if(!query.trim()){res.style.display="none";return;}
+  const q=query.toLowerCase();
+  const matches=_allLabelsList.filter(l=>l.name.toLowerCase().includes(q)||l.key.includes(q)).slice(0,25);
+  if(!matches.length){res.style.display="none";return;}
+  res.innerHTML=matches.map(l=>`
+    <div onclick="setKeyRemap(${JSON.stringify(newKey)},${JSON.stringify(l.key)})"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center"
+      onmouseover="this.style.background='#fef9c3'" onmouseout="this.style.background=''">
+      <span>${escHtml(l.name)}</span>
+      <span style="color:#9ca3af;font-size:11px">${escHtml(l.key)}</span>
+    </div>`).join("");
+  res.style.display="block";
 }
 
 function setOrtDecision(idx,decision){
