@@ -218,7 +218,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <rect x="15" y="27" width="19" height="7"  rx="2.5" fill="#1abc9c"/>
   </svg>
   <div class="hdr-text">
-    <h1>Vereinskalender / Veranstaltungen</h1>
+    <h1>Vereinskalender / Veranstaltungen<br><span style="font-size:11px;font-weight:400;opacity:.6;letter-spacing:.1px">die Termine deiner Region</span></h1>
     <p id="hdr-sub">Lade&#8230;</p>
   </div>
   <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
@@ -231,6 +231,12 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <a class="refresh-btn" id="verein-admin-btn" href="/verein/dashboard" title="Mein Verein" style="display:none;text-decoration:none">&#9998;</a>
   </div>
 </header>
+
+<div id="welcome-banner" style="display:none;background:var(--hdr);color:#fff;padding:10px 16px 12px;font-size:13px;line-height:1.5;position:relative">
+  Alle Vereins- und Veranstaltungstermine deiner Region &ndash; kostenlos und werbefrei.
+  Fehlt dein Verein? Einfach <a href="/verein/register" style="color:#fff;font-weight:600;text-decoration:underline">registrieren</a> und Termine selbst pflegen.
+  <button onclick="dismissWelcome()" style="position:absolute;top:8px;right:12px;background:none;border:none;color:rgba(255,255,255,.7);font-size:20px;cursor:pointer;line-height:1;padding:0">&times;</button>
+</div>
 
 <!-- Content -->
 <div class="content">
@@ -2269,6 +2275,13 @@ async function doConfirmImport(){
   document.getElementById("drop-zone").style.pointerEvents="";
 }
 
+function dismissWelcome(){
+  localStorage.setItem("vk_welcome_seen","1");
+  document.getElementById("welcome-banner").style.display="none";
+}
+if(!localStorage.getItem("vk_welcome_seen")){
+  document.getElementById("welcome-banner").style.display="block";
+}
 load();
 </script>
 </body>
