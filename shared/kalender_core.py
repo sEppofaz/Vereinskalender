@@ -314,8 +314,9 @@ def parse_excel_bytes(file_bytes: bytes) -> list:
         if not row or len(row) < 3:
             continue
         datum_raw, uhrzeit_raw, bezeichnung_raw = row[0], row[1], row[2]
-        ort_raw      = row[3] if len(row) > 3 else None
+        ort_raw       = row[3] if len(row) > 3 else None
         ortschaft_raw = row[4] if len(row) > 4 else None
+        verein_raw    = row[5] if len(row) > 5 else None
 
         if not datum_raw or not bezeichnung_raw:
             continue
@@ -352,6 +353,7 @@ def parse_excel_bytes(file_bytes: bytes) -> list:
             "bezeichnung": bezeichnung,
             "ort":        str(ort_raw).strip() if ort_raw else "",
             "ortschaft":  str(ortschaft_raw).strip() if ortschaft_raw else "",
+            "verein":     str(verein_raw).strip() if verein_raw else "",
         })
     wb.close()
     log(f"📊  Excel-Import: {len(termine)} Termine geparst")

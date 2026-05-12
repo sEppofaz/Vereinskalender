@@ -376,7 +376,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
          ondragover="event.preventDefault();this.classList.add('drag')"
          ondragleave="this.classList.remove('drag')"
          ondrop="handleDrop(event)">
-      <input type="file" id="file-in" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif" style="display:none" onchange="startUpload(this.files[0])">
+      <input type="file" id="file-in" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.xlsx" style="display:none" onchange="startUpload(this.files[0])">
       <input type="file" id="cam-in" accept="image/*" capture="environment" style="display:none" onchange="startUpload(this.files[0])">
       <span class="uz-icon" id="uz-icon">&#128196;</span>
       <div class="uz-title">Kalender importieren</div>
@@ -1223,7 +1223,8 @@ async function startUpload(file){
   let pct=15;
   const iv=setInterval(()=>{pct=Math.min(pct+1.5,82);inner.style.width=pct+"%";},800);
   const isImg=/\.(jpe?g|png|heic|heif)$/i.test(file.name);
-  setTimeout(()=>{lbl.textContent=isImg?"Claude liest das Foto… (15–30 Sek.)":"Claude analysiert den Kalender… (30–60 Sek.)";},2000);
+  const isXls=/\.xlsx$/i.test(file.name);
+  setTimeout(()=>{lbl.textContent=isXls?"Excel wird verarbeitet… (ca. 5 Sek.)":isImg?"Claude liest das Foto… (15–30 Sek.)":"Claude analysiert den Kalender… (30–60 Sek.)";},2000);
 
   try{
     const token=sessionStorage.getItem("ut")||"";

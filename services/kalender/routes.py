@@ -26,6 +26,7 @@ from shared.kalender_core import (
     find_similar_keys,
     import_pdf_bytes,
     log,
+    parse_excel_bytes,
     lookup_plz,
 )
 
@@ -92,17 +93,21 @@ def upload_kalender():
     f      = request.files["file"]
     fname  = (f.filename or "").lower()
     suffix = Path(fname).suffix if fname else ""
-    _KALENDER_ALLOWED = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif"}
+    _KALENDER_ALLOWED = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif", ".xlsx"}
 
     if suffix not in _KALENDER_ALLOWED:
-        return json.dumps({"error": "Nur PDF oder Bilder (JPG, PNG, HEIC)"}), 400, {"Content-Type": "application/json"}
+        return json.dumps({"error": "Nur PDF, Bilder (JPG, PNG, HEIC) oder Excel (.xlsx)"}), 400, {"Content-Type": "application/json"}
     if suffix in {".heic", ".heif"} and not _HEIC_SUPPORTED:
         return json.dumps({"error": "HEIC-Format auf diesem Server nicht verfügbar"}), 400, {"Content-Type": "application/json"}
 
     try:
-        result   = import_pdf_bytes(f.read(), suffix)
-        alle     = result["alle"]
-        auto_plz = result["auto_plz"]
+        if suffix == ".xlsx":
+            alle     = parse_excel_bytes(f.read())
+            auto_plz = ""
+        else:
+            result   = import_pdf_bytes(f.read(), suffix)
+            alle     = result["alle"]
+            auto_plz = result["auto_plz"]
 
         try:
             data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
