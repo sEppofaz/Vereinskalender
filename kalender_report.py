@@ -48,13 +48,14 @@ def send_telegram(token: str, chat_id: str, text: str) -> None:
 
 
 def parse_log_dt(line: str) -> datetime | None:
-    pat = re.compile(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})')
-    m = pat.search(line)
+    m = re.search(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-]\d{4})\]', line)
     if not m:
         return None
-    d, mo, y, h, mi, s = m.groups()
+    d, mo, y, h, mi, s, tz_str = m.groups()
     try:
-        return datetime(int(y), _MONTHS[mo], int(d), int(h), int(mi), int(s))
+        sign = 1 if tz_str[0] == '+' else -1
+        off = _tz(timedelta(hours=sign * int(tz_str[1:3]), minutes=sign * int(tz_str[3:5])))
+        return datetime(int(y), _MONTHS[mo], int(d), int(h), int(mi), int(s), tzinfo=off)
     except (KeyError, ValueError):
         return None
 
@@ -98,7 +99,7 @@ def _anonymize_ip(raw: str) -> str:
 
 def count_page_views() -> tuple[int, int, int, int]:
     """Gibt (aufrufe_heute, aufrufe_7d, unique_heute, unique_7d) zurück."""
-    now    = datetime.now(_tz.utc).replace(tzinfo=None)
+    now    = datetime.now(_tz.utc)
     heute  = now.replace(hour=0, minute=0, second=0, microsecond=0)
     cutoff = now - timedelta(days=7)
     heute_count  = 0

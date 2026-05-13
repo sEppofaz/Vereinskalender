@@ -47,13 +47,14 @@ def _read_lines(path: Path) -> list[str]:
 
 
 def _parse_dt(line: str) -> datetime | None:
-    m = re.search(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})', line)
+    m = re.search(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-]\d{4})\]', line)
     if not m:
         return None
-    d, mo, y, h, mi, s = m.groups()
+    d, mo, y, h, mi, s, tz_str = m.groups()
     try:
-        return datetime(int(y), MONTHS_MAP[mo], int(d), int(h), int(mi), int(s),
-                        tzinfo=timezone.utc)
+        sign = 1 if tz_str[0] == '+' else -1
+        off = timezone(timedelta(hours=sign * int(tz_str[1:3]), minutes=sign * int(tz_str[3:5])))
+        return datetime(int(y), MONTHS_MAP[mo], int(d), int(h), int(mi), int(s), tzinfo=off)
     except (KeyError, ValueError):
         return None
 
