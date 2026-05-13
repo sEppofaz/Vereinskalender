@@ -367,8 +367,9 @@ def api_admin_stats_hourly():
 
     # Heute live aus Log hinzuzählen
     try:
-        import re as _re, gzip as _gzip
+        import re as _re
         from pathlib import Path as _Path
+        from datetime import timezone as _tz, timedelta as _td
         from zoneinfo import ZoneInfo as _ZI
         _berlin = _ZI("Europe/Berlin")
         _log = _Path("/var/log/nginx/vereinskalender.access.log")
@@ -378,13 +379,17 @@ def api_admin_stats_hourly():
             for line in _log.read_text(errors="ignore").splitlines():
                 if '"GET /kalender' not in line and '"GET / ' not in line:
                     continue
-                m = _re.search(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2})', line)
+                m = _re.search(
+                    r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-])(\d{2})(\d{2})\]',
+                    line
+                )
                 if not m:
                     continue
-                dd, mo, yy, hh = m.group(1), m.group(2), m.group(3), m.group(4)
+                dd, mo, yy, hh, mm, ss = m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6)
+                sign = 1 if m.group(7) == "+" else -1
+                off = _tz(sign * _td(hours=int(m.group(8)), minutes=int(m.group(9))))
                 try:
-                    from datetime import timezone as _tz
-                    dt = datetime(int(yy), _months[mo], int(dd), int(hh), tzinfo=_tz.utc)
+                    dt = datetime(int(yy), _months[mo], int(dd), int(hh), int(mm), int(ss), tzinfo=off)
                     if dt.astimezone(_berlin).date() == today:
                         hourly[dt.astimezone(_berlin).hour] += 1
                 except Exception:
@@ -439,6 +444,8 @@ def api_admin_stats():
     tg_ranking = []
     ical_7d = 0
     ical_30d = 0
+    ical_vereine_count = 0
+    ical_ranking = []
     try:
         from datetime import date as _d, timedelta as _td
         _heute = _d.today()
@@ -466,24 +473,37 @@ def api_admin_stats():
             ical_7d = r["n"] if r else 0
             r = conn.execute("SELECT COUNT(*) AS n FROM ical_feed_requests WHERE date >= ?", (_d30,)).fetchone()
             ical_30d = r["n"] if r else 0
+            r = conn.execute("SELECT COUNT(DISTINCT verein_key) AS n FROM ical_feed_vereine WHERE date >= ?", (_d7,)).fetchone()
+            ical_vereine_count = r["n"] if r else 0
+            rows = conn.execute(
+                "SELECT verein_key, COUNT(DISTINCT ip_hash) AS abos FROM ical_feed_vereine "
+                "WHERE date >= ? GROUP BY verein_key ORDER BY abos DESC",
+                (_d7,),
+            ).fetchall()
+            ical_ranking = [
+                {"key": row["verein_key"], "name": _labels.get(row["verein_key"], row["verein_key"]), "abos": row["abos"]}
+                for row in rows
+            ]
     except Exception:
         pass
 
     return json.dumps({
-        "aufrufe_heute":     h_views,
-        "aufrufe_7d":        w_views,
-        "unique_heute":      h_unique,
-        "unique_7d":         w_unique,
-        "vereine_gesamt":    vereine_gesamt,
-        "vereine_aktiv":     vereine_aktiv,
-        "termine_kd":        termine_kd,
-        "letzter_import":    letzter_import,
-        "timestamp":         jetzt,
-        "tg_subscribers":    tg_subscribers,
-        "tg_vereine_count":  tg_vereine_count,
-        "tg_ranking":        tg_ranking,
-        "ical_7d":           ical_7d,
-        "ical_30d":          ical_30d,
+        "aufrufe_heute":      h_views,
+        "aufrufe_7d":         w_views,
+        "unique_heute":       h_unique,
+        "unique_7d":          w_unique,
+        "vereine_gesamt":     vereine_gesamt,
+        "vereine_aktiv":      vereine_aktiv,
+        "termine_kd":         termine_kd,
+        "letzter_import":     letzter_import,
+        "timestamp":          jetzt,
+        "tg_subscribers":     tg_subscribers,
+        "tg_vereine_count":   tg_vereine_count,
+        "tg_ranking":         tg_ranking,
+        "ical_7d":            ical_7d,
+        "ical_30d":           ical_30d,
+        "ical_vereine_count": ical_vereine_count,
+        "ical_ranking":       ical_ranking,
     }, ensure_ascii=False), 200, {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
 
 
@@ -911,8 +931,9 @@ def api_ical():
     )
 
 
-def _track_ical_request():
+def _track_ical_request(filter_vereine: set | None = None):
     import hashlib
+    from zoneinfo import ZoneInfo as _ZI
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip()
     try:
         addr = ipaddress.ip_address(ip)
@@ -923,13 +944,18 @@ def _track_ical_request():
     except Exception:
         prefix = ip[:20]
     ip_hash = hashlib.sha256(prefix.encode()).hexdigest()[:20]
-    today = datetime.now().date().isoformat()
+    today = datetime.now(_ZI("Europe/Berlin")).date().isoformat()
     try:
         with db_conn() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO ical_feed_requests (date, ip_hash) VALUES (?, ?)",
                 (today, ip_hash),
             )
+            for vkey in (filter_vereine or set()):
+                conn.execute(
+                    "INSERT OR IGNORE INTO ical_feed_vereine (date, ip_hash, verein_key) VALUES (?, ?, ?)",
+                    (today, ip_hash, vkey),
+                )
     except Exception:
         pass
 
@@ -937,8 +963,8 @@ def _track_ical_request():
 @kalender_bp.route("/api/ical/feed")
 def api_ical_feed():
     """Abonnierbarer iCal-Feed aller bevorstehenden Termine (webcal://)."""
-    _track_ical_request()
     filter_vereine = {v.strip().lower() for v in request.args.get("v", "").split(",") if v.strip()}
+    _track_ical_request(filter_vereine)
     filter_ort     = request.args.get("ort", "").strip().lower()
 
     try:

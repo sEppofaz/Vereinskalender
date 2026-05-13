@@ -148,6 +148,13 @@ def init_db():
                 PRIMARY KEY (date, ip_hash)
             );
 
+            CREATE TABLE IF NOT EXISTS ical_feed_vereine (
+                date       TEXT NOT NULL,
+                ip_hash    TEXT NOT NULL,
+                verein_key TEXT NOT NULL,
+                PRIMARY KEY (date, ip_hash, verein_key)
+            );
+
             CREATE TABLE IF NOT EXISTS page_stats_hourly (
                 datum  TEXT    NOT NULL,
                 stunde INTEGER NOT NULL,

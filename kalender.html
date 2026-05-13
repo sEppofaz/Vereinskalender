@@ -1290,17 +1290,19 @@ async function loadStats(){
   try{
     const data=await(await fetch("/api/admin/stats",{headers:{"X-Upload-Token":token}})).json();
     el.innerHTML=`
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;text-align:center">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div style="background:var(--card);border:1.5px solid var(--tab);border-radius:12px;padding:16px;text-align:center">
           <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Aufrufe heute</div>
-          <div style="font-size:28px;font-weight:700;color:var(--tab)">${data.aufrufe_heute}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${data.unique_heute} Besucher</div>
+          <div style="font-size:38px;font-weight:700;color:var(--tab);line-height:1.1">${data.aufrufe_heute}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">${data.unique_heute} Besucher</div>
         </div>
-        <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;text-align:center">
+        <div style="background:var(--card);border:1.5px solid var(--tab);border-radius:12px;padding:16px;text-align:center">
           <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Aufrufe 7 Tage</div>
-          <div style="font-size:28px;font-weight:700;color:var(--tab)">${data.aufrufe_7d}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${data.unique_7d} Besucher</div>
+          <div style="font-size:38px;font-weight:700;color:var(--tab);line-height:1.1">${data.aufrufe_7d}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">${data.unique_7d} Besucher</div>
         </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;text-align:center">
           <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">&#128242; Telegram-Abos</div>
           <div style="font-size:28px;font-weight:700;color:#0088cc">${data.tg_subscribers??'–'}</div>
@@ -1327,6 +1329,24 @@ async function loadStats(){
                 <div style="height:100%;width:${Math.round(v.abos/max*100)}%;background:#0088cc;border-radius:5px"></div>
               </div>
               <div style="font-size:13px;font-weight:600;color:#0088cc;width:20px;text-align:right;flex-shrink:0">${v.abos}</div>
+            </div>`).join('');
+        })()}
+      </div>`:''}
+      ${data.ical_ranking&&data.ical_ranking.length?`
+      <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-weight:600;color:var(--text1);font-size:14px">&#128197; Kalender-Feed nach Verein <span style="font-size:11px;font-weight:400;color:var(--text3)">(7&nbsp;Tage)</span></span>
+          <span style="font-size:12px;color:var(--text3)">${data.ical_vereine_count??0} Vereine abonniert</span>
+        </div>
+        ${(()=>{
+          const max=data.ical_ranking[0].abos||1;
+          return data.ical_ranking.map(v=>`
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <div style="flex:1;min-width:0;font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(v.name)}">${escHtml(v.name)}</div>
+              <div style="width:120px;height:10px;background:var(--border);border-radius:5px;overflow:hidden;flex-shrink:0">
+                <div style="height:100%;width:${Math.round(v.abos/max*100)}%;background:#34c759;border-radius:5px"></div>
+              </div>
+              <div style="font-size:13px;font-weight:600;color:#34c759;width:20px;text-align:right;flex-shrink:0">${v.abos}</div>
             </div>`).join('');
         })()}
       </div>`:''}
