@@ -30,7 +30,17 @@ def main():
         try:
             data = json.loads(GOTTESDIENSTE_FILE.read_text())
             if isinstance(data, dict):
-                alle = data.get("hk", []) + data.get("pk", []) + data.get("hk_pk", [])
+                raw = []
+                for key in ("hk", "pk", "ok"):
+                    raw.extend(data.get(key, []))
+                # Duplikate entfernen (gleiche datum+uhrzeit+ort+art)
+                seen = set()
+                alle = []
+                for t in raw:
+                    sig = (t.get("datum"), t.get("uhrzeit"), t.get("ort"), t.get("art"))
+                    if sig not in seen:
+                        seen.add(sig)
+                        alle.append(t)
             else:
                 alle = data
             morgen_gd = [t for t in alle if t.get("datum") == morgen]
