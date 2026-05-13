@@ -435,6 +435,8 @@ def api_admin_stats():
     jetzt = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%d.%m.%Y, %H:%M")
 
     tg_subscribers = 0
+    tg_vereine_count = 0
+    tg_ranking = []
     ical_7d = 0
     ical_30d = 0
     try:
@@ -445,6 +447,21 @@ def api_admin_stats():
         with db_conn() as conn:
             r = conn.execute("SELECT COUNT(DISTINCT chat_id) AS n FROM tg_subscriptions").fetchone()
             tg_subscribers = r["n"] if r else 0
+            r = conn.execute("SELECT COUNT(DISTINCT verein_key) AS n FROM tg_subscriptions").fetchone()
+            tg_vereine_count = r["n"] if r else 0
+            rows = conn.execute(
+                "SELECT verein_key, COUNT(chat_id) AS abos FROM tg_subscriptions GROUP BY verein_key ORDER BY abos DESC"
+            ).fetchall()
+            _labels = {}
+            try:
+                _raw = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
+                _labels = _raw.get("_labels", {})
+            except Exception:
+                pass
+            tg_ranking = [
+                {"key": row["verein_key"], "name": _labels.get(row["verein_key"], row["verein_key"]), "abos": row["abos"]}
+                for row in rows
+            ]
             r = conn.execute("SELECT COUNT(*) AS n FROM ical_feed_requests WHERE date >= ?", (_d7,)).fetchone()
             ical_7d = r["n"] if r else 0
             r = conn.execute("SELECT COUNT(*) AS n FROM ical_feed_requests WHERE date >= ?", (_d30,)).fetchone()
@@ -453,18 +470,20 @@ def api_admin_stats():
         pass
 
     return json.dumps({
-        "aufrufe_heute":   h_views,
-        "aufrufe_7d":      w_views,
-        "unique_heute":    h_unique,
-        "unique_7d":       w_unique,
-        "vereine_gesamt":  vereine_gesamt,
-        "vereine_aktiv":   vereine_aktiv,
-        "termine_kd":      termine_kd,
-        "letzter_import":  letzter_import,
-        "timestamp":       jetzt,
-        "tg_subscribers":  tg_subscribers,
-        "ical_7d":         ical_7d,
-        "ical_30d":        ical_30d,
+        "aufrufe_heute":     h_views,
+        "aufrufe_7d":        w_views,
+        "unique_heute":      h_unique,
+        "unique_7d":         w_unique,
+        "vereine_gesamt":    vereine_gesamt,
+        "vereine_aktiv":     vereine_aktiv,
+        "termine_kd":        termine_kd,
+        "letzter_import":    letzter_import,
+        "timestamp":         jetzt,
+        "tg_subscribers":    tg_subscribers,
+        "tg_vereine_count":  tg_vereine_count,
+        "tg_ranking":        tg_ranking,
+        "ical_7d":           ical_7d,
+        "ical_30d":          ical_30d,
     }, ensure_ascii=False), 200, {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
 
 

@@ -1312,6 +1312,24 @@ async function loadStats(){
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${data.ical_30d??'–'} unique (30&nbsp;Tage)</div>
         </div>
       </div>
+      ${data.tg_ranking&&data.tg_ranking.length?`
+      <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-weight:600;color:var(--text1);font-size:14px">&#128242; Telegram-Abos nach Verein</span>
+          <span style="font-size:12px;color:var(--text3)">${data.tg_vereine_count??0} Vereine abonniert</span>
+        </div>
+        ${(()=>{
+          const max=data.tg_ranking[0].abos||1;
+          return data.tg_ranking.map(v=>`
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <div style="flex:1;min-width:0;font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(v.name)}">${escHtml(v.name)}</div>
+              <div style="width:120px;height:10px;background:var(--border);border-radius:5px;overflow:hidden;flex-shrink:0">
+                <div style="height:100%;width:${Math.round(v.abos/max*100)}%;background:#0088cc;border-radius:5px"></div>
+              </div>
+              <div style="font-size:13px;font-weight:600;color:#0088cc;width:20px;text-align:right;flex-shrink:0">${v.abos}</div>
+            </div>`).join('');
+        })()}
+      </div>`:''}
       <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <span style="font-weight:600;color:var(--text1);font-size:14px">&#128200; Besucherverlauf</span>
