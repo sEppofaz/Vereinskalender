@@ -224,8 +224,11 @@ def do_import(uid: str) -> str:
         neu += 1
 
     VEREINSTERMINE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-    pending_file.unlink(missing_ok=True)
     _log(f"✅ Import: {neu} neu, {duplikat} Duplikate übersprungen")
+    try:
+        pending_file.unlink(missing_ok=True)
+    except OSError:
+        pass
     return f"✅ {neu} neue Termine importiert, {duplikat} Duplikate übersprungen"
 
 
