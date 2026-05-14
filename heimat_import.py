@@ -96,8 +96,13 @@ def _fetch(c_id: str) -> str | None:
 
 
 def discover_c_id(url: str) -> str | None:
-    """Nutzt Playwright einmalig um die c= Gemeinde-ID zu ermitteln."""
+    """Nutzt Playwright einmalig um die c= Gemeinde-ID zu ermitteln.
+    Methode 1: Base64-kodierter iframe in .borlabs-hide (neueres Borlabs)
+    Methode 2: Netzwerk-Intercept nach Button-Click (älteres Borlabs)
+    """
+    import base64
     from playwright.sync_api import sync_playwright
+
     found = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -112,11 +117,34 @@ def discover_c_id(url: str) -> str | None:
 
         try:
             page.goto(url, wait_until="networkidle", timeout=30000)
-            page.evaluate("""() => {
-                const btn = document.querySelector(".brlbs-cmpnt-cb-btn");
-                if (btn) btn.click();
-            }""")
-            page.wait_for_timeout(8000)
+            page.wait_for_timeout(3000)
+
+            # Methode 1: Base64-Block aus .borlabs-hide dekodieren
+            b64s = page.evaluate(
+                '() => [...document.querySelectorAll(".borlabs-hide")].map(d => d.innerText.trim())')
+            for b64 in b64s:
+                if not b64:
+                    continue
+                try:
+                    decoded = base64.b64decode(b64 + "==").decode("utf-8", errors="ignore")
+                    m = re.search(r'c=([a-f0-9\-]{36})', decoded)
+                    if m:
+                        found.append(m.group(1))
+                except Exception:
+                    pass
+
+            if not found:
+                # Methode 2: Consent-Button klicken → Netzwerk-Intercept
+                page.evaluate("""() => {
+                    const sels = ['.brlbs-cmpnt-cb-btn','._brlbs-btn-accept-all',
+                                  '[class*=\"accept\"]','[class*=\"consent\"]'];
+                    for (const s of sels) {
+                        const b = document.querySelector(s);
+                        if (b) { b.click(); break; }
+                    }
+                }""")
+                page.wait_for_timeout(10000)
+
         except Exception as e:
             _log(f"  Playwright-Fehler: {e}")
         finally:
