@@ -34,6 +34,14 @@ WOCHENTAGE = {"So.","Sa.","Mo.","Di.","Mi.","Do.","Fr."}
 SKIP_TEXT  = {"zum Kalender hinzufügen","mehr anzeigen"}
 
 
+def _slugify(name: str) -> str:
+    name = name.lower()
+    for a, b in [("ä","ae"),("ö","oe"),("ü","ue"),("ß","ss")]:
+        name = name.replace(a, b)
+    name = re.sub(r"[^a-z0-9]+", "_", name)
+    return name.strip("_")[:50]
+
+
 def _log(msg: str) -> None:
     ts   = datetime.now().isoformat(timespec="seconds")
     line = f"{ts} {msg}"
@@ -152,14 +160,16 @@ def discover_c_id(url: str) -> str | None:
     return found[0] if found else None
 
 
-def _existing_events() -> set[tuple[str, str, str]]:
-    """Gibt alle (datum, uhrzeit, bezeichnung)-Tripel aus vereinstermine.json zurück (alle Keys)."""
+def _existing_events(exclude_keys: set | None = None) -> set[tuple[str, str, str]]:
+    """Gibt alle (datum, uhrzeit, bezeichnung)-Tripel aus vereinstermine.json zurück.
+    exclude_keys: Keys die übersprungen werden (z.B. alte Gemeinde-Keys bei Migration)."""
     if not VEREINSTERMINE_FILE.exists():
         return set()
     data = json.loads(VEREINSTERMINE_FILE.read_text())
     existing = set()
+    skip = exclude_keys or set()
     for key, items in data.items():
-        if not isinstance(items, list):
+        if key in skip or not isinstance(items, list):
             continue
         for item in items:
             if isinstance(item, dict) and "datum" in item:
@@ -189,7 +199,8 @@ def _is_duplicate(datum: str, uhrzeit: str, bezeichnung: str,
 
 
 def do_import(uid: str) -> str:
-    """Schreibt bestätigte Events in vereinstermine.json – überspringt alle keys-übergreifenden Duplikate."""
+    """Schreibt bestätigte Events in vereinstermine.json.
+    Löscht zuerst alte Gemeinde-Keys (Migration auf per-Veranstalter-Keys)."""
     pending_file = Path(f"/tmp/heimat_pending_{uid}.json")
     if not pending_file.exists():
         return "⚠️ Pending-Datei nicht gefunden (Server-Neustart?)"
@@ -199,8 +210,22 @@ def do_import(uid: str) -> str:
     data     = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
     if "_labels" not in data:
         data["_labels"] = {}
+    if "_meta" not in data:
+        data["_meta"] = {}
 
-    existing = _existing_events()
+    # Alte Gemeinde-Keys entfernen (werden durch per-Veranstalter-Keys ersetzt)
+    if GEMEINDEN_FILE.exists():
+        gemeinden = json.loads(GEMEINDEN_FILE.read_text())
+        old_keys  = {g["verein_key"] for g in gemeinden}
+        geloescht = [k for k in old_keys if k in data]
+        for k in geloescht:
+            del data[k]
+            data["_labels"].pop(k, None)
+            data["_meta"].pop(k, None)
+        if geloescht:
+            _log(f"🗑 Alte Gemeinde-Keys entfernt: {', '.join(geloescht)}")
+
+    existing = _existing_events()  # frisch nach Löschung
     neu = duplikat = 0
 
     for e in events:
@@ -210,12 +235,12 @@ def do_import(uid: str) -> str:
         key = e["_verein_key"]
         if key not in data:
             data[key] = []
-        if key not in data["_labels"]:
-            data["_labels"][key] = e["_label"]
-        if "_meta" not in data:
-            data["_meta"] = {}
+        data["_labels"].setdefault(key, e["_label"])
         if key not in data["_meta"]:
-            data["_meta"][key] = {"heimatort": e["_gemeinde"]}
+            data["_meta"][key] = {
+                "heimatort": e["_gemeinde"],
+                "landkreis": e.get("_landkreis", "Landkreis Landshut"),
+            }
         data[key].append({
             "datum":        e["datum"],
             "uhrzeit":      e["uhrzeit"],
@@ -251,8 +276,10 @@ def cmd_import(secrets: dict) -> None:
                       "ℹ️ Keine Gemeinden konfiguriert.\n/heimat-add <url> nutzen.")
         return
 
-    heute    = datetime.now().strftime("%Y-%m-%d")
-    existing = _existing_events()
+    heute     = datetime.now().strftime("%Y-%m-%d")
+    old_keys  = {g["verein_key"] for g in gemeinden}
+    # Migration: alte Gemeinde-Keys beim Duplikat-Check überspringen
+    existing  = _existing_events(exclude_keys=old_keys)
 
     alle_events = []
     fehler      = []
@@ -265,9 +292,11 @@ def cmd_import(secrets: dict) -> None:
             continue
         events = _parse_events(html, heute)
         for e in events:
-            e["_verein_key"] = g["verein_key"]
-            e["_label"]      = g.get("label", g["name"])
+            veranst          = e.get("_verein_name", "")
+            e["_verein_key"] = _slugify(veranst) or g["verein_key"]
+            e["_label"]      = veranst or g.get("label", g["name"])
             e["_gemeinde"]   = g["name"]
+            e["_landkreis"]  = g.get("landkreis", "Landkreis Landshut")
             e["_neu"]        = not _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing)
         alle_events.extend(events)
         neu_count = sum(1 for e in events if e["_neu"])
