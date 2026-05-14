@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 import threading
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -28,6 +30,60 @@ _DROPBOX_INVOICE_REFRESH_TOKEN = os.environ.get("DROPBOX_INVOICE_REFRESH_TOKEN",
 _DROPBOX_INVOICE_APP_KEY       = os.environ.get("DROPBOX_INVOICE_APP_KEY", "")
 _DROPBOX_INVOICE_APP_SECRET    = os.environ.get("DROPBOX_INVOICE_APP_SECRET", "")
 _TODOS_FILE_PATH               = "/Apps/Claude/PKA/Todos.md"
+_GOOGLE_MAPS_API_KEY           = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+_VERKEHR_ORIGIN                = "Hölskofen, Pfeffenhausen, Bayern, Deutschland"
+
+
+def _fmt_dauer(sek: int) -> str:
+    h, m = divmod(sek // 60, 60)
+    return f"{h} Std {m} Min" if h else f"{m} Min"
+
+
+def _get_verkehr(ziel: str) -> str:
+    if not _GOOGLE_MAPS_API_KEY:
+        return "❌ Google Maps API-Key nicht konfiguriert."
+    params = urllib.parse.urlencode({
+        "origin":         _VERKEHR_ORIGIN,
+        "destination":    ziel,
+        "departure_time": "now",
+        "traffic_model":  "best_guess",
+        "key":            _GOOGLE_MAPS_API_KEY,
+    })
+    url = f"https://maps.googleapis.com/maps/api/directions/json?{params}"
+    try:
+        with urllib.request.urlopen(url, timeout=15) as r:
+            resp = json.loads(r.read())
+        if resp["status"] != "OK":
+            return f"❌ Directions API: {resp['status']} – {resp.get('error_message', '')}"
+        leg     = resp["routes"][0]["legs"][0]
+        normal  = leg["duration"]["value"]
+        traffic = leg["duration_in_traffic"]["value"]
+        dist    = leg["distance"]["value"]
+    except Exception as e:
+        return f"❌ Fehler: {e}"
+
+    diff_min = max(0, (traffic - normal) // 60)
+    if diff_min < 10:
+        ampel, hinweis = "🟢", "Straße ist frei – normal losfahren."
+    elif diff_min < 20:
+        ampel, hinweis = "🟡", "Etwas Verkehr – etwas früher losfahren."
+    else:
+        ampel, hinweis = "🔴", f"Stau! {diff_min} Min Verzögerung – deutlich früher losfahren."
+
+    now   = datetime.now()
+    tag   = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][now.weekday()]
+    datum = now.strftime(f"{tag}, %d.%m.%Y %H:%M")
+    zeilen = [
+        f"🚗 Verkehr: Hölskofen → {ziel}",
+        f"{datum} Uhr",
+        "",
+        f"📍 Strecke: {dist / 1000:.0f} km",
+        f"⏱ Normale Fahrt:  {_fmt_dauer(normal)}",
+        f"{ampel} Mit Verkehr:   {_fmt_dauer(traffic)}" + (f"  (+{diff_min} Min)" if diff_min else ""),
+        "",
+        f"→ {hinweis}",
+    ]
+    return "\n".join(zeilen)
 
 
 def _get_pka_dropbox_client() -> dropbox.Dropbox:
@@ -308,6 +364,8 @@ def telegram_webhook():
             "/verein-ff — FF Hölskofen\n"
             "/verein-kp — Königstreue Patrioten\n"
             "/termine-30 — Alle Termine (nächste 30 Tage)\n\n"
+            "🚗 Verkehr:\n"
+            "/verkehr <Adresse> — Verkehrsinfo Hölskofen → Ziel\n\n"
             "💡 Ohne Befehl: Nachricht wird als Todo gespeichert"
         )
         send_telegram(chat_id, help_text)
@@ -333,6 +391,15 @@ def telegram_webhook():
             ),
             daemon=True,
         ).start()
+
+    elif text.lower().startswith("/verkehr"):
+        ziel = text[8:].strip()
+        if not ziel:
+            send_telegram(chat_id, "Bitte Zieladresse angeben:\n/verkehr Marienplatz 1, München")
+        else:
+            log(f"🚗  /verkehr → {ziel[:60]}")
+            send_telegram(chat_id, "🚗 Route wird berechnet…")
+            threading.Thread(target=lambda z=ziel, cid=chat_id: send_telegram(cid, _get_verkehr(z)), daemon=True).start()
 
     elif text.lower() == "/reboot":
         log(f"🔄  /reboot angefordert von Chat {chat_id}")
