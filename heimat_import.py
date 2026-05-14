@@ -225,7 +225,8 @@ def do_import(uid: str) -> str:
         if geloescht:
             _log(f"🗑 Alte Gemeinde-Keys entfernt: {', '.join(geloescht)}")
 
-    existing = _existing_events()  # frisch nach Löschung
+    # Alte Keys auch beim Duplikat-Check ausschließen (Datei noch nicht neu geschrieben)
+    existing = _existing_events(exclude_keys=old_keys)
     neu = duplikat = 0
 
     for e in events:
@@ -247,7 +248,7 @@ def do_import(uid: str) -> str:
             "bezeichnung":  e["bezeichnung"],
             "veranstalter": e.get("_verein_name", ""),
             "ort":          e["ort"],
-            "ortschaft":    e.get("ortschaft", ""),
+            "ortschaft":    e.get("ortschaft", "") or e["_gemeinde"],
         })
         existing.add((e["datum"], e["uhrzeit"], e["bezeichnung"].strip().lower()))
         neu += 1

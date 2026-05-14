@@ -676,7 +676,7 @@ const ORT_EXCLUDE=/^(GH|FF|BRK|SC|FC|KP|EC|KLJB|KSK|und|Hof|Haus|Heim|Saal|Halle
 
 function _extractOrtschaft(ort){
   if(!ort||!ort.trim()) return null;
-  const parts=ort.trim().split(/[\s,\/\-]+/).filter(w=>w.length>3&&!ORT_EXCLUDE.test(w));
+  const parts=ort.trim().split(/[\s,\/\-]+/).filter(w=>w.length>3&&!ORT_EXCLUDE.test(w)&&!/^\d+$/.test(w)&&w.length<=20);
   return parts.length ? parts[parts.length-1] : null;
 }
 
@@ -1133,7 +1133,7 @@ function render(){
     const uz=t.uhrzeit?`${t.uhrzeit} Uhr`:"";
     const ort=t.ort?`<div class="ev-ort">&#128205; ${t.ort}</div>`:"";
     const veranstLabel=t.veranstalter||labels[t.verein]||t.verein;
-    const ortBadgeTxt=(t.ortschaft&&t.ortschaft.trim())?t.ortschaft.trim():_extractOrtschaft(t.ort);
+    const ortBadgeTxt=(t.ortschaft&&t.ortschaft.trim())?t.ortschaft.trim():null;
     const lk=(meta[t.verein]||{}).landkreis;
     const lkLabel=lk?lk.replace(/^Landkreis\s+/,""):"";
     const badge=`<span class="ev-badge" style="background:${col}22;color:${col}">${veranstLabel}</span>`
