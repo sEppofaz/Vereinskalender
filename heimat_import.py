@@ -124,41 +124,60 @@ def discover_c_id(url: str) -> str | None:
     return found[0] if found else None
 
 
+def _existing_events() -> set[tuple[str, str]]:
+    """Gibt alle (datum, bezeichnung)-Paare aus vereinstermine.json zurück (alle Keys)."""
+    if not VEREINSTERMINE_FILE.exists():
+        return set()
+    data = json.loads(VEREINSTERMINE_FILE.read_text())
+    existing = set()
+    for key, items in data.items():
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if isinstance(item, dict) and "datum" in item:
+                existing.add((item["datum"], item.get("bezeichnung", "").strip().lower()))
+    return existing
+
+
 def do_import(uid: str) -> str:
-    """Schreibt bestätigte Events in vereinstermine.json."""
+    """Schreibt bestätigte Events in vereinstermine.json – überspringt alle keys-übergreifenden Duplikate."""
     pending_file = Path(f"/tmp/heimat_pending_{uid}.json")
     if not pending_file.exists():
         return "⚠️ Pending-Datei nicht gefunden (Server-Neustart?)"
 
-    pending = json.loads(pending_file.read_text())
-    events  = pending["events"]
-
-    data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
+    pending  = json.loads(pending_file.read_text())
+    events   = pending["events"]
+    data     = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
     if "_labels" not in data:
         data["_labels"] = {}
 
-    neu = 0
+    existing = _existing_events()
+    neu = duplikat = 0
+
     for e in events:
+        check = (e["datum"], e["bezeichnung"].strip().lower())
+        if check in existing:
+            duplikat += 1
+            continue
         key = e["_verein_key"]
         if key not in data:
             data[key] = []
         if key not in data["_labels"]:
             data["_labels"][key] = e["_label"]
-        existing = {(ex["datum"], ex.get("bezeichnung", "")) for ex in data[key]}
-        if (e["datum"], e["bezeichnung"]) not in existing:
-            data[key].append({
-                "datum":       e["datum"],
-                "uhrzeit":     e["uhrzeit"],
-                "bezeichnung": e["bezeichnung"],
-                "ort":         e["ort"],
-                "ortschaft":   e.get("ortschaft", ""),
-            })
-            neu += 1
+        data[key].append({
+            "datum":       e["datum"],
+            "uhrzeit":     e["uhrzeit"],
+            "bezeichnung": e["bezeichnung"],
+            "ort":         e["ort"],
+            "ortschaft":   e.get("ortschaft", ""),
+        })
+        existing.add(check)
+        neu += 1
 
     VEREINSTERMINE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
     pending_file.unlink(missing_ok=True)
-    _log(f"✅ Import: {neu} neu, {len(events)-neu} bereits vorhanden")
-    return f"✅ {neu} neue Termine importiert ({len(events)-neu} bereits vorhanden)"
+    _log(f"✅ Import: {neu} neu, {duplikat} Duplikate übersprungen")
+    return f"✅ {neu} neue Termine importiert, {duplikat} Duplikate übersprungen"
 
 
 def cmd_import(secrets: dict) -> None:
@@ -176,7 +195,9 @@ def cmd_import(secrets: dict) -> None:
                       "ℹ️ Keine Gemeinden konfiguriert.\n/heimat-add <url> nutzen.")
         return
 
-    heute       = datetime.now().strftime("%Y-%m-%d")
+    heute    = datetime.now().strftime("%Y-%m-%d")
+    existing = _existing_events()
+
     alle_events = []
     fehler      = []
 
@@ -191,32 +212,40 @@ def cmd_import(secrets: dict) -> None:
             e["_verein_key"] = g["verein_key"]
             e["_label"]      = g.get("label", g["name"])
             e["_gemeinde"]   = g["name"]
+            e["_neu"]        = (e["datum"], e["bezeichnung"].strip().lower()) not in existing
         alle_events.extend(events)
-        _log(f"  → {len(events)} Termine")
+        neu_count = sum(1 for e in events if e["_neu"])
+        _log(f"  → {len(events)} Termine ({neu_count} neu)")
 
     if not alle_events:
         send_telegram(token, chat_id, "🏡 heimat-info: Keine bevorstehenden Termine.")
         return
 
     alle_events.sort(key=lambda x: (x["datum"], x.get("uhrzeit", "")))
+    neu_gesamt  = sum(1 for e in alle_events if e["_neu"])
+    dup_gesamt  = len(alle_events) - neu_gesamt
+
     uid = str(uuid.uuid4())[:8]
     Path(f"/tmp/heimat_pending_{uid}.json").write_text(
         json.dumps({"uid": uid, "events": alle_events}, ensure_ascii=False))
 
+    # Vorschau: nur neue Termine anzeigen, Duplikate zusammenfassen
+    neue   = [e for e in alle_events if e["_neu"]]
     vorschau = "\n".join(
         f"• {e['datum']} {e.get('uhrzeit',''):5} – {e['bezeichnung'][:35]} [{e['_gemeinde']}]"
-        for e in alle_events[:15])
-    if len(alle_events) > 15:
-        vorschau += f"\n… +{len(alle_events)-15} weitere"
+        for e in neue[:15])
+    if len(neue) > 15:
+        vorschau += f"\n… +{len(neue)-15} weitere neue"
 
     gemeinden_str = ", ".join(g["name"] for g in gemeinden)
     msg = (f"🏡 heimat-info Import\n"
            f"Gemeinden: {gemeinden_str}\n"
-           f"{len(alle_events)} bevorstehende Termine:\n\n{vorschau}")
+           f"Gesamt: {len(alle_events)} | 🆕 Neu: {neu_gesamt} | ⏭ Duplikate: {dup_gesamt}\n\n"
+           + (vorschau if neue else "Alle Termine bereits vorhanden."))
 
     send_telegram_inline(token, chat_id, msg, [[
-        {"text": "✅ Importieren", "callback_data": f"heimat_ok:{uid}"},
-        {"text": "❌ Verwerfen",  "callback_data": f"heimat_no:{uid}"},
+        {"text": f"✅ {neu_gesamt} importieren", "callback_data": f"heimat_ok:{uid}"},
+        {"text": "❌ Verwerfen",                 "callback_data": f"heimat_no:{uid}"},
     ]])
 
     if fehler:
