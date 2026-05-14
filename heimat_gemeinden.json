@@ -1,35 +1,35 @@
 [
   {
     "name": "Bayerbach",
-    "label": "Bayerbach (heimat-info)",
+    "label": "Veranstaltungen Bayerbach",
     "verein_key": "bayerbach",
     "c_id": "77bc043e-8712-4f31-8f3f-c1d201618046",
     "url": "https://www.gemeinde-bayerbach.de/veranstaltungen/"
   },
   {
     "name": "Ergoldsbach",
-    "label": "Ergoldsbach (heimat-info)",
+    "label": "Veranstaltungen Ergoldsbach",
     "verein_key": "ergoldsbach",
     "c_id": "8e1c2b19-35b0-4bb4-a61c-341b9207ca53",
     "url": "https://www.markt-ergoldsbach.de/termine-und-veranstaltungen/"
   },
   {
     "name": "Essenbach",
-    "label": "Essenbach (heimat-info)",
+    "label": "Veranstaltungen Essenbach",
     "verein_key": "essenbach",
     "c_id": "9b889949-b4e2-44f4-bb32-e478b7d1cac0",
     "url": "https://www.essenbach.de/events/veranstaltungskalender/"
   },
   {
     "name": "Postau",
-    "label": "Postau (heimat-info)",
+    "label": "Veranstaltungen Postau",
     "verein_key": "postau",
     "c_id": "6cf859e7-c80b-4091-8eef-f9d35aa6ecb5",
     "url": "https://www.vg.woerth-isar.de/veranstaltungskalender-postau"
   },
   {
     "name": "Weng",
-    "label": "Weng (heimat-info)",
+    "label": "Veranstaltungen Weng",
     "verein_key": "weng",
     "c_id": "3302fe27-a194-43d2-8de7-a05f44cfd8ad",
     "url": "https://www.vg.woerth-isar.de/veranstaltungskalender-weng"

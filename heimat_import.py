@@ -212,6 +212,10 @@ def do_import(uid: str) -> str:
             data[key] = []
         if key not in data["_labels"]:
             data["_labels"][key] = e["_label"]
+        if "_meta" not in data:
+            data["_meta"] = {}
+        if key not in data["_meta"]:
+            data["_meta"][key] = {"heimatort": e["_gemeinde"]}
         data[key].append({
             "datum":        e["datum"],
             "uhrzeit":      e["uhrzeit"],
