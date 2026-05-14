@@ -152,8 +152,8 @@ def discover_c_id(url: str) -> str | None:
     return found[0] if found else None
 
 
-def _existing_events() -> set[tuple[str, str]]:
-    """Gibt alle (datum, bezeichnung)-Paare aus vereinstermine.json zurück (alle Keys)."""
+def _existing_events() -> set[tuple[str, str, str]]:
+    """Gibt alle (datum, uhrzeit, bezeichnung)-Tripel aus vereinstermine.json zurück (alle Keys)."""
     if not VEREINSTERMINE_FILE.exists():
         return set()
     data = json.loads(VEREINSTERMINE_FILE.read_text())
@@ -163,19 +163,25 @@ def _existing_events() -> set[tuple[str, str]]:
             continue
         for item in items:
             if isinstance(item, dict) and "datum" in item:
-                existing.add((item["datum"], item.get("bezeichnung", "").strip().lower()))
+                existing.add((
+                    item["datum"],
+                    item.get("uhrzeit", ""),
+                    item.get("bezeichnung", "").strip().lower(),
+                ))
     return existing
 
 
-def _is_duplicate(datum: str, bezeichnung: str, existing: set[tuple[str, str]]) -> bool:
-    """Exakter Match + Substring-Check (heimat-info-Titel oft kürzer als Claude-Vision-Import)."""
+def _is_duplicate(datum: str, uhrzeit: str, bezeichnung: str,
+                  existing: set[tuple[str, str, str]]) -> bool:
+    """Exakter Match + Substring-Check auf gleichem Datum UND gleicher Uhrzeit.
+    Zwei Events gleichen Namens zu verschiedenen Zeiten sind keine Duplikate."""
     bez = bezeichnung.strip().lower()
-    if (datum, bez) in existing:
+    if (datum, uhrzeit, bez) in existing:
         return True
     if len(bez) < 6:
         return False
-    for ex_datum, ex_bez in existing:
-        if ex_datum != datum:
+    for ex_datum, ex_uhr, ex_bez in existing:
+        if ex_datum != datum or ex_uhr != uhrzeit:
             continue
         if bez in ex_bez or ex_bez in bez:
             return True
@@ -198,7 +204,7 @@ def do_import(uid: str) -> str:
     neu = duplikat = 0
 
     for e in events:
-        if _is_duplicate(e["datum"], e["bezeichnung"], existing):
+        if _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing):
             duplikat += 1
             continue
         key = e["_verein_key"]
@@ -214,7 +220,7 @@ def do_import(uid: str) -> str:
             "ort":          e["ort"],
             "ortschaft":    e.get("ortschaft", ""),
         })
-        existing.add((e["datum"], e["bezeichnung"].strip().lower()))
+        existing.add((e["datum"], e["uhrzeit"], e["bezeichnung"].strip().lower()))
         neu += 1
 
     VEREINSTERMINE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
@@ -255,7 +261,7 @@ def cmd_import(secrets: dict) -> None:
             e["_verein_key"] = g["verein_key"]
             e["_label"]      = g.get("label", g["name"])
             e["_gemeinde"]   = g["name"]
-            e["_neu"]        = not _is_duplicate(e["datum"], e["bezeichnung"], existing)
+            e["_neu"]        = not _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing)
         alle_events.extend(events)
         neu_count = sum(1 for e in events if e["_neu"])
         _log(f"  → {len(events)} Termine ({neu_count} neu)")
