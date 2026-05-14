@@ -12,6 +12,7 @@ import html as htmlmod
 import json
 import re
 import sys
+import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime
@@ -25,6 +26,7 @@ GEMEINDEN_FILE      = Path("/opt/rename-webhook/heimat_gemeinden.json")
 VEREINSTERMINE_FILE = Path("/opt/rename-webhook/vereinstermine.json")
 LOG_FILE            = "/var/log/pka-heimat.log"
 API_BASE            = "https://www.heimat-info.de/embeddings/events/v1/"
+DROPBOX_EXCEL_PATH  = "/Apps/Claude/Vereinskalender/heimat_preview.xlsx"
 
 MONATE     = {"Januar":1,"Februar":2,"März":3,"April":4,"Mai":5,"Juni":6,
                "Juli":7,"August":8,"September":9,"Oktober":10,"November":11,"Dezember":12}
@@ -230,6 +232,9 @@ def do_import(uid: str) -> str:
     neu = duplikat = 0
 
     for e in events:
+        if not e.get("_neu", True):  # Duplikat oder via Excel ausgeschlossen
+            duplikat += 1
+            continue
         if _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing):
             duplikat += 1
             continue
@@ -342,6 +347,18 @@ def cmd_import(secrets: dict) -> None:
     if fehler:
         send_telegram(token, chat_id, f"⚠️ Fetch-Fehler bei: {', '.join(fehler)}")
 
+    # Excel nach Dropbox exportieren (nur neue Termine, zur manuellen Bearbeitung am Mac)
+    try:
+        db_token    = _get_dropbox_token(secrets)
+        excel_bytes = _generate_excel(alle_events, uid)
+        _upload_dropbox(db_token, excel_bytes, DROPBOX_EXCEL_PATH)
+        send_telegram(token, chat_id,
+                      "📊 Excel: heimat_preview.xlsx → Dropbox\n"
+                      "Bearbeite am Mac, dann /heimat-excel schicken.")
+    except Exception as exc:
+        _log(f"⚠️ Excel-Export fehlgeschlagen: {exc}")
+        send_telegram(token, chat_id, f"⚠️ Excel-Export fehlgeschlagen: {exc}")
+
 
 def cmd_add(url: str, secrets: dict) -> None:
     token   = secrets["TOKEN"]
@@ -380,10 +397,172 @@ def cmd_add(url: str, secrets: dict) -> None:
     _log(f"✅ Gemeinde hinzugefügt: {name} ({c_id})")
 
 
+def _get_dropbox_token(secrets: dict) -> str:
+    data = urllib.parse.urlencode({
+        "grant_type":    "refresh_token",
+        "refresh_token": secrets["DROPBOX_REFRESH_TOKEN"],
+        "client_id":     secrets["DROPBOX_APP_KEY"],
+        "client_secret": secrets["DROPBOX_APP_SECRET"],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.dropbox.com/oauth2/token", data=data, method="POST")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())["access_token"]
+
+
+def _upload_dropbox(token: str, file_bytes: bytes, path: str) -> None:
+    req = urllib.request.Request(
+        "https://content.dropboxapi.com/2/files/upload",
+        data=file_bytes, method="POST")
+    req.add_header("Authorization",   f"Bearer {token}")
+    req.add_header("Content-Type",    "application/octet-stream")
+    req.add_header("Dropbox-API-Arg", json.dumps(
+        {"path": path, "mode": "overwrite", "mute": True}))
+    with urllib.request.urlopen(req, timeout=30):
+        pass
+
+
+def _download_dropbox(token: str, path: str) -> bytes:
+    req = urllib.request.Request(
+        "https://content.dropboxapi.com/2/files/download", method="POST")
+    req.add_header("Authorization",   f"Bearer {token}")
+    req.add_header("Dropbox-API-Arg", json.dumps({"path": path}))
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.read()
+
+
+def _generate_excel(events: list[dict], uid: str) -> bytes:
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Vorschau"
+
+    headers = ["importieren", "datum", "uhrzeit", "bezeichnung",
+               "veranstalter", "ort", "ortschaft", "gemeinde"]
+    ws.append(headers)
+    header_fill = PatternFill("solid", fgColor="6D28D9")
+    header_font = Font(bold=True, color="FFFFFF")
+    for cell in ws[1]:
+        cell.fill      = header_fill
+        cell.font      = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for e in (e for e in events if e.get("_neu", False)):
+        ws.append([
+            "ja",
+            e["datum"],
+            e.get("uhrzeit", ""),
+            e["bezeichnung"],
+            e.get("_verein_name", ""),
+            e.get("ort", ""),
+            e.get("ortschaft", "") or e.get("_gemeinde", ""),
+            e.get("_gemeinde", ""),
+        ])
+
+    for i, w in enumerate([12, 12, 8, 40, 30, 25, 20, 15], 1):
+        ws.column_dimensions[ws.cell(1, i).column_letter].width = w
+
+    ws_meta = wb.create_sheet("Meta")
+    ws_meta.append(["uid",     uid])
+    ws_meta.append(["erzeugt", datetime.now().isoformat(timespec="seconds")])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def cmd_excel(secrets: dict) -> None:
+    """Liest bearbeitete Excel von Dropbox, aktualisiert Pending-Datei, sendet neue Vorschau."""
+    import io
+    from openpyxl import load_workbook
+
+    token   = secrets["TOKEN"]
+    chat_id = secrets["CHAT_ID"]
+
+    try:
+        db_token = _get_dropbox_token(secrets)
+        raw      = _download_dropbox(db_token, DROPBOX_EXCEL_PATH)
+    except Exception as exc:
+        send_telegram(token, chat_id, f"❌ Dropbox-Download fehlgeschlagen: {exc}")
+        return
+
+    try:
+        wb     = load_workbook(io.BytesIO(raw))
+        ws     = wb["Vorschau"]
+        ws_m   = wb["Meta"]
+        uid    = ws_m.cell(1, 2).value
+    except Exception as exc:
+        send_telegram(token, chat_id, f"❌ Excel-Fehler: {exc}")
+        return
+
+    if not uid:
+        send_telegram(token, chat_id, "❌ UID nicht im Meta-Sheet gefunden.")
+        return
+
+    pending_file = Path(f"/tmp/heimat_pending_{uid}.json")
+    if not pending_file.exists():
+        send_telegram(token, chat_id,
+                      f"⚠️ Pending-Datei nicht gefunden (uid={uid}).\n"
+                      "Bitte /heimat erneut ausführen.")
+        return
+
+    pending = json.loads(pending_file.read_text())
+    events  = pending["events"]
+
+    # Welche Events hat der User auf "ja" gelassen? Key: (datum, uhrzeit, bezeichnung, gemeinde)
+    behalten: set[tuple] = set()
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row[0]:
+            continue
+        if str(row[0]).strip().lower() == "ja":
+            behalten.add((
+                str(row[1] or "").strip(),
+                str(row[2] or "").strip(),
+                str(row[3] or "").strip(),
+                str(row[7] or "").strip(),
+            ))
+
+    for e in events:
+        key    = (e["datum"], e.get("uhrzeit", ""), e["bezeichnung"], e.get("_gemeinde", ""))
+        e["_neu"] = key in behalten
+
+    pending_file.write_text(json.dumps(pending, ensure_ascii=False))
+
+    neu_gesamt = sum(1 for e in events if e["_neu"])
+    dup_gesamt = len(events) - neu_gesamt
+    neue       = [e for e in events if e["_neu"]]
+
+    def _vorschau_zeile(e: dict) -> str:
+        veranst = e.get("_verein_name", "")
+        ort     = e.get("ort", "")
+        teile   = [e["bezeichnung"][:30]]
+        if veranst: teile.append(veranst[:25])
+        if ort:     teile.append(ort[:25])
+        return f"• {e['datum']} {e.get('uhrzeit',''):5} – {' · '.join(teile)} [{e['_gemeinde']}]"
+
+    vorschau = "\n".join(_vorschau_zeile(e) for e in neue[:15])
+    if len(neue) > 15:
+        vorschau += f"\n… +{len(neue)-15} weitere"
+
+    msg = (f"📊 Excel eingelesen\n"
+           f"✅ Zu importieren: {neu_gesamt} | ❌ Ausgeschlossen: {dup_gesamt}\n\n"
+           + (vorschau if neue else "Keine Termine zum Importieren ausgewählt."))
+
+    send_telegram_inline(token, chat_id, msg, [[
+        {"text": f"✅ {neu_gesamt} importieren", "callback_data": f"heimat_ok:{uid}"},
+        {"text": "❌ Verwerfen",                 "callback_data": f"heimat_no:{uid}"},
+    ]])
+
+
 def main() -> None:
     secrets = load_secrets()
     if len(sys.argv) >= 3 and sys.argv[1] == "--add":
         cmd_add(sys.argv[2], secrets)
+    elif len(sys.argv) >= 2 and sys.argv[1] == "--excel":
+        cmd_excel(secrets)
     else:
         cmd_import(secrets)
 

@@ -368,7 +368,8 @@ def telegram_webhook():
             "/verkehr <Adresse> — Verkehrsinfo Hölskofen → Ziel\n\n"
             "🏡 heimat-info:\n"
             "/heimat — Termine aller Gemeinden importieren\n"
-            "/heimat-add <url> — Neue Gemeinde hinzufügen\n\n"
+            "/heimat-add <url> — Neue Gemeinde hinzufügen\n"
+            "/heimat-excel — Bearbeitete Excel von Dropbox einlesen\n\n"
             "🔴 Vereinskalender:\n"
             "/stopp-vko — Kalender deaktivieren (Wartungsseite)\n"
             "/start-vko — Kalender wieder aktivieren\n\n"
@@ -432,6 +433,17 @@ def telegram_webhook():
                 ),
                 daemon=True,
             ).start()
+
+    elif text.lower() == "/heimat-excel":
+        log(f"📊  /heimat-excel angefordert von Chat {chat_id}")
+        send_telegram(chat_id, "📊 Lese heimat_preview.xlsx von Dropbox…")
+        threading.Thread(
+            target=lambda: subprocess.run(
+                ["/opt/rename-webhook/bin/python3", "/opt/rename-webhook/heimat_import.py", "--excel"],
+                timeout=120
+            ),
+            daemon=True,
+        ).start()
 
     elif text.lower() == "/stopp-vko":
         log(f"🔴  /stopp-vko angefordert von Chat {chat_id}")
