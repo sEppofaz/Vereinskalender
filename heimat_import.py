@@ -193,11 +193,12 @@ def do_import(uid: str) -> str:
         if key not in data["_labels"]:
             data["_labels"][key] = e["_label"]
         data[key].append({
-            "datum":       e["datum"],
-            "uhrzeit":     e["uhrzeit"],
-            "bezeichnung": e["bezeichnung"],
-            "ort":         e["ort"],
-            "ortschaft":   e.get("ortschaft", ""),
+            "datum":        e["datum"],
+            "uhrzeit":      e["uhrzeit"],
+            "bezeichnung":  e["bezeichnung"],
+            "veranstalter": e.get("_verein_name", ""),
+            "ort":          e["ort"],
+            "ortschaft":    e.get("ortschaft", ""),
         })
         existing.add(check)
         neu += 1
@@ -259,9 +260,14 @@ def cmd_import(secrets: dict) -> None:
 
     # Vorschau: nur neue Termine anzeigen, Duplikate zusammenfassen
     neue   = [e for e in alle_events if e["_neu"]]
-    vorschau = "\n".join(
-        f"• {e['datum']} {e.get('uhrzeit',''):5} – {e['bezeichnung'][:35]} [{e['_gemeinde']}]"
-        for e in neue[:15])
+    def _vorschau_zeile(e: dict) -> str:
+        veranst = e.get("_verein_name", "")
+        ort     = e.get("ort", "")
+        teile   = [e["bezeichnung"][:30]]
+        if veranst: teile.append(veranst[:25])
+        if ort:     teile.append(ort[:25])
+        return f"• {e['datum']} {e.get('uhrzeit',''):5} – {' · '.join(teile)} [{e['_gemeinde']}]"
+    vorschau = "\n".join(_vorschau_zeile(e) for e in neue[:15])
     if len(neue) > 15:
         vorschau += f"\n… +{len(neue)-15} weitere neue"
 
