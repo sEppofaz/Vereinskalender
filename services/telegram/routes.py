@@ -366,6 +366,9 @@ def telegram_webhook():
             "/termine-30 — Alle Termine (nächste 30 Tage)\n\n"
             "🚗 Verkehr:\n"
             "/verkehr <Adresse> — Verkehrsinfo Hölskofen → Ziel\n\n"
+            "🏡 heimat-info:\n"
+            "/heimat — Termine aller Gemeinden importieren\n"
+            "/heimat-add <url> — Neue Gemeinde hinzufügen\n\n"
             "💡 Ohne Befehl: Nachricht wird als Todo gespeichert"
         )
         send_telegram(chat_id, help_text)
@@ -400,6 +403,32 @@ def telegram_webhook():
             log(f"🚗  /verkehr → {ziel[:60]}")
             send_telegram(chat_id, "🚗 Route wird berechnet…")
             threading.Thread(target=lambda z=ziel, cid=chat_id: send_telegram(cid, _get_verkehr(z)), daemon=True).start()
+
+    elif text.lower() == "/heimat":
+        log(f"🏡  /heimat Import angefordert von Chat {chat_id}")
+        send_telegram(chat_id, "🏡 heimat-info Import wird gestartet…")
+        threading.Thread(
+            target=lambda: subprocess.run(
+                ["/opt/rename-webhook/bin/python3", "/opt/rename-webhook/heimat_import.py"],
+                timeout=120
+            ),
+            daemon=True,
+        ).start()
+
+    elif text.lower().startswith("/heimat-add"):
+        url = text[11:].strip()
+        if not url or not url.startswith("http"):
+            send_telegram(chat_id, "Bitte URL angeben:\n/heimat-add https://www.gemeinde-xyz.de/veranstaltungen/")
+        else:
+            log(f"🏡  /heimat-add {url[:60]}")
+            send_telegram(chat_id, f"🔍 Suche heimat-info ID für:\n{url}\n(20–30 Sek. …)")
+            threading.Thread(
+                target=lambda u=url: subprocess.run(
+                    ["/opt/rename-webhook/bin/python3", "/opt/rename-webhook/heimat_import.py", "--add", u],
+                    timeout=90
+                ),
+                daemon=True,
+            ).start()
 
     elif text.lower() == "/reboot":
         log(f"🔄  /reboot angefordert von Chat {chat_id}")
@@ -456,6 +485,28 @@ def telegram_webhook():
             else:
                 answer_telegram_callback(cb_id, "🗑 Verworfen")
                 send_telegram(TELEGRAM_CHAT_ID, f"🗑 Verworfen: {pending['dateiname']}")
+
+        elif cb_data.startswith("heimat_ok:") or cb_data.startswith("heimat_no:"):
+            uid = cb_data.split(":", 1)[1]
+            if cb_data.startswith("heimat_ok:"):
+                def _do_heimat_import(u=uid):
+                    try:
+                        import importlib.util, sys as _sys
+                        spec = importlib.util.spec_from_file_location(
+                            "heimat_import", "/opt/rename-webhook/heimat_import.py")
+                        mod = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(mod)
+                        result = mod.do_import(u)
+                        send_telegram(TELEGRAM_CHAT_ID, result)
+                    except Exception as e:
+                        send_telegram(TELEGRAM_CHAT_ID, f"❌ heimat-Import fehlgeschlagen: {e}")
+                answer_telegram_callback(cb_id, "⏳ Importiere…")
+                threading.Thread(target=_do_heimat_import, daemon=True).start()
+            else:
+                from pathlib import Path as _Path
+                _Path(f"/tmp/heimat_pending_{uid}.json").unlink(missing_ok=True)
+                answer_telegram_callback(cb_id, "🗑 Verworfen")
+                send_telegram(TELEGRAM_CHAT_ID, "🗑 heimat-info Import verworfen.")
 
         elif cb_data.startswith("verein_approve:") or cb_data.startswith("verein_reject:"):
             from shared.vk_db import db_conn
