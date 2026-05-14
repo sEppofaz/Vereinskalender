@@ -369,6 +369,9 @@ def telegram_webhook():
             "🏡 heimat-info:\n"
             "/heimat — Termine aller Gemeinden importieren\n"
             "/heimat-add <url> — Neue Gemeinde hinzufügen\n\n"
+            "🔴 Vereinskalender:\n"
+            "/stopp-vko — Kalender deaktivieren (Wartungsseite)\n"
+            "/start-vko — Kalender wieder aktivieren\n\n"
             "💡 Ohne Befehl: Nachricht wird als Todo gespeichert"
         )
         send_telegram(chat_id, help_text)
@@ -429,6 +432,18 @@ def telegram_webhook():
                 ),
                 daemon=True,
             ).start()
+
+    elif text.lower() == "/stopp-vko":
+        log(f"🔴  /stopp-vko angefordert von Chat {chat_id}")
+        _mf = Path("/opt/rename-webhook/vko_maintenance")
+        _mf.touch()
+        send_telegram(chat_id, "🔴 Vereinskalender deaktiviert.\nBesucher sehen jetzt die Wartungsseite.\n\n/start-vko zum Reaktivieren.")
+
+    elif text.lower() == "/start-vko":
+        log(f"🟢  /start-vko angefordert von Chat {chat_id}")
+        _mf = Path("/opt/rename-webhook/vko_maintenance")
+        _mf.unlink(missing_ok=True)
+        send_telegram(chat_id, "🟢 Vereinskalender wieder aktiv.")
 
     elif text.lower() == "/reboot":
         log(f"🔄  /reboot angefordert von Chat {chat_id}")

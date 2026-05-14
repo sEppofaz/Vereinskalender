@@ -32,7 +32,32 @@ from shared.kalender_core import (
 
 kalender_bp = Blueprint("kalender", __name__)
 
-UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN", "")
+UPLOAD_TOKEN        = os.environ.get("UPLOAD_TOKEN", "")
+VKO_MAINTENANCE_FILE = Path("/opt/rename-webhook/vko_maintenance")
+
+_MAINTENANCE_HTML = """<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vereinskalender – Wartung</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       font-family:-apple-system,sans-serif;background:#f5f5f7;color:#1c1c1e}
+  .box{background:#fff;border-radius:18px;padding:40px 32px;max-width:420px;width:90%;
+       text-align:center;box-shadow:0 4px 24px rgba(0,0,0,.10)}
+  h1{font-size:22px;font-weight:700;margin:16px 0 8px}
+  p{font-size:15px;color:#555;line-height:1.6;margin:0}
+  .icon{font-size:52px;margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="icon">🛠</div>
+  <h1>Kurze Wartungspause</h1>
+  <p>Der Vereinskalender ist vorübergehend nicht verfügbar.<br>
+     Wir sind bald wieder für euch da.</p>
+</div>
+</body>
+</html>"""
 
 
 @kalender_bp.route("/manifest.json")
@@ -74,6 +99,8 @@ def apple_touch_icon():
 
 @kalender_bp.route("/kalender")
 def kalender_page():
+    if VKO_MAINTENANCE_FILE.exists():
+        return _MAINTENANCE_HTML, 503, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
     try:
         html = KALENDER_HTML_FILE.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -741,6 +768,8 @@ def api_ortschaften_post():
 
 @kalender_bp.route("/api/termine")
 def api_termine():
+    if VKO_MAINTENANCE_FILE.exists():
+        return json.dumps({"error": "Wartung"}), 503, {"Content-Type": "application/json"}
     try:
         raw = json.loads(VEREINSTERMINE_FILE.read_text())
     except Exception:
