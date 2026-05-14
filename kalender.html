@@ -1094,7 +1094,7 @@ function render(){
     const col=colors[t.verein]||"#777";
     const uz=t.uhrzeit?`${t.uhrzeit} Uhr`:"";
     const ort=t.ort?`<div class="ev-ort">&#128205; ${t.ort}</div>`:"";
-    const badge=`<span class="ev-badge" style="background:${col}22;color:${col}">${labels[t.verein]||t.verein}</span>`;
+    const badge=`<span class="ev-badge" style="background:${col}22;color:${col}">${t.veranstalter||labels[t.verein]||t.verein}</span>`;
     const idx=allT.indexOf(t);
     const isFav=favorites.some(f=>f.type==="verein"&&f.key===t.verein);
     const sep=t.datum!==_lastDatum?`<div class="ev-date-sep">${fmt(t.datum)}</div>`:"";
