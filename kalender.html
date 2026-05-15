@@ -704,8 +704,8 @@ function filterOrtChipsForGemeinde(){
   const chips=document.querySelectorAll("[data-o]:not([data-o='alle'])");
   if(!aktGemeinden.size){chips.forEach(c=>c.style.display="");return;}
   chips.forEach(c=>{
-    const ortGemeinde=gemeindeMap[c.dataset.o];
-    c.style.display=(ortGemeinde&&aktGemeinden.has(ortGemeinde))?"":"none";
+    const g=_gemeindeForOrt(c.dataset.o);
+    c.style.display=(g&&aktGemeinden.has(g))?"":"none";
   });
 }
 
@@ -768,26 +768,26 @@ function _extractOrtschaft(ort){
   const parts=ort.trim().split(/[\s,\/\-]+/).filter(w=>w.length>3&&!ORT_EXCLUDE.test(w)&&!/^\d+$/.test(w)&&w.length<=20);
   return parts.length ? parts[parts.length-1] : null;
 }
+// Alle Verein-Keys einer Ortschaft (via allOrteAll-Label + expliziter meta.heimatort)
+function _vereinsForOrt(o){
+  const s=new Set(allOrteAll[o]||[]);
+  Object.entries(meta).forEach(([k,m])=>{if(m.heimatort===o)s.add(k);});
+  return s;
+}
+// Gemeinde einer Ortschaft – ermittelt aus den Vereinen die dort beheimatet sind
+function _gemeindeForOrt(o){
+  for(const k of _vereinsForOrt(o)){const g=(meta[k]||{}).gemeinde;if(g)return g;}
+  return "";
+}
 
 function buildOrtFilter(){
   const section=document.getElementById("ort-section");
   const container=document.getElementById("ort-chips");
 
-  // Ortschaften zählen: t.ortschaft (von Claude, admin-bestätigt) hat Vorrang;
-  // Fallback: _extractOrtschaft(t.ort) mit Mindest-Schwelle ≥ 2 Termine
-  const confirmedOrte=new Set();
-  const fallbackCount={};
-  allT.forEach(t=>{
-    if(t.ortschaft&&t.ortschaft.trim()){
-      const o=t.ortschaft.trim();
-      if(!ortBlacklist.has(o))confirmedOrte.add(o);
-    } else {
-      const o=_extractOrtschaft(t.ort);
-      if(o&&!ortBlacklist.has(o))fallbackCount[o]=(fallbackCount[o]||0)+1;
-    }
-  });
-  const ortSet=new Set([...confirmedOrte,
-    ...Object.keys(fallbackCount).filter(o=>fallbackCount[o]>=2)]);
+  // Ortschaften aus Vereinsheimatorten (allOrteAll-Keys + explizite meta.heimatort)
+  const ortSet=new Set();
+  Object.keys(allOrteAll).forEach(o=>{if(!ortBlacklist.has(o))ortSet.add(o);});
+  Object.values(meta).forEach(m=>{if(m.heimatort&&!ortBlacklist.has(m.heimatort))ortSet.add(m.heimatort);});
 
   const orte=[...ortSet].sort((a,b)=>a.localeCompare(b,"de"));
   if(!orte.length){section.style.display="none";return;}
@@ -814,18 +814,12 @@ function filterVereinListForOrt(){
   const lbls=document.querySelectorAll("#v-list .v-check");
   const gemFilter=aktGemeinden.size>0;
   if(!aktOrte.size&&!gemFilter){lbls.forEach(l=>l.style.display="");return;}
-  const vereinsInOrte=new Set();
-  if(aktOrte.size){
-    allT.forEach(t=>{
-      const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-      if(o&&aktOrte.has(o))vereinsInOrte.add(t.verein);
-    });
-  }
   lbls.forEach(lbl=>{
     const cb=lbl.querySelector("[data-vk]");
     if(cb){
-      const inOrt=!aktOrte.size||vereinsInOrte.has(cb.dataset.vk);
-      const inGem=!gemFilter||(meta[cb.dataset.vk]&&aktGemeinden.has(meta[cb.dataset.vk].gemeinde));
+      const k=cb.dataset.vk;
+      const inOrt=!aktOrte.size||[...aktOrte].some(o=>(allOrteAll[o]||[]).includes(k)||(meta[k]||{}).heimatort===o);
+      const inGem=!gemFilter||aktGemeinden.has((meta[k]||{}).gemeinde||"");
       lbl.style.display=(inOrt&&inGem)?"":"none";
     }
   });
@@ -834,15 +828,10 @@ function filterVereinListForOrt(){
 function filterOrtChipsForLandkreis(){
   const chips=document.querySelectorAll("[data-o]:not([data-o='alle'])");
   if(!aktLandkreis){chips.forEach(c=>c.style.display="");return;}
-  const vereinsInLk=new Set(
-    Object.entries(meta).filter(([,m])=>m.landkreis===aktLandkreis).map(([k])=>k)
-  );
-  const orteInLk=new Set();
-  allT.forEach(t=>{
-    const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-    if(o&&!ortBlacklist.has(o)&&vereinsInLk.has(t.verein))orteInLk.add(o);
+  chips.forEach(c=>{
+    const inLk=[..._vereinsForOrt(c.dataset.o)].some(k=>(meta[k]||{}).landkreis===aktLandkreis);
+    c.style.display=inLk?"":"none";
   });
-  chips.forEach(c=>c.style.display=orteInLk.has(c.dataset.o)?"":"none");
 }
 
 function toggleOrt(o){
@@ -1169,12 +1158,12 @@ function renderSearchChips(){
 /* ── Favorit-Match (zentrale Hilfsfunktion) ── */
 function _termMatchFav(t,f){
   if(!activeFavs.has(f.type+":"+String(f.key)))return false;
-  const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-  if(f.type==="verein")return t.verein===f.key;
-  if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
-  if(f.type==="ortschaft"){const vereinHeimatort=(meta[t.verein]||{}).heimatort||"";const inOrtGrp=(allOrteAll[f.key]||[]).includes(t.verein);return tOrt===f.key||vereinHeimatort===f.key||inOrtGrp;}
-  if(f.type==="region"){const effLk=((meta[t.verein]||{}).landkreis)||"Landkreis Landshut";return effLk===f.key;}
-  if(f.type==="gemeinde")return((meta[t.verein]||{}).gemeinde||"")===f.key;
+  const k=t.verein;
+  if(f.type==="verein")return k===f.key;
+  if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(k);
+  if(f.type==="ortschaft")return(allOrteAll[f.key]||[]).includes(k)||(meta[k]||{}).heimatort===f.key;
+  if(f.type==="region")return((meta[k]||{}).landkreis||"Landkreis Landshut")===f.key;
+  if(f.type==="gemeinde")return((meta[k]||{}).gemeinde||"")===f.key;
   return false;
 }
 
@@ -1200,10 +1189,8 @@ function render(){
     if(aktLandkreis!==null){const m=meta[t.verein];if(!m||m.landkreis!==aktLandkreis)return false;}
     if(aktGemeinden.size>0){const m=meta[t.verein];if(!m||!aktGemeinden.has(m.gemeinde))return false;}
     if(aktOrte.size>0){
-      const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-      const vereinHeimatort=(meta[t.verein]||{}).heimatort||"";
-      const inOrtGrp=[...aktOrte].some(o=>(allOrteAll[o]||[]).includes(t.verein));
-      if(!aktOrte.has(tOrt)&&!aktOrte.has(vereinHeimatort)&&!inOrtGrp)return false;
+      const k=t.verein;
+      if(![...aktOrte].some(o=>(allOrteAll[o]||[]).includes(k)||(meta[k]||{}).heimatort===o))return false;
     }
     return true;
   });
