@@ -998,9 +998,23 @@ function renderFavBar(){
   el.innerHTML=favorites.map(f=>{
     const id=f.type+":"+String(f.key);
     const on=activeFavs.has(id);
-    const key=String(f.key).replace(/"/g,"&quot;");
-    return `<span class="chip${on?" on":""}" data-ftype="${f.type}" data-fkey="${key}">${f.icon||""} ${f.label}</span>`;
+    const key=String(f.key).replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    const rmBtn=`<span onclick="event.stopPropagation();removeFavorite('${f.type}','${key}')" style="margin-left:4px;opacity:.55;font-size:11px;line-height:1">✕</span>`;
+    return `<span class="chip${on?" on":""}" data-ftype="${f.type}" data-fkey="${key}">${f.icon||""} ${f.label}${rmBtn}</span>`;
   }).join("");
+}
+
+function removeFavorite(type,key){
+  const fi=favorites.findIndex(f=>f.type===type&&String(f.key)===String(key));
+  if(fi<0)return;
+  favorites.splice(fi,1);
+  activeFavs.delete(type+":"+String(key));
+  saveFavorites();saveActiveFavs();
+  renderFavBar();updateAllBadges();render();
+  if(type==="ortschaft"){buildOrtFilter();applyStateToUI();}
+  else if(type==="region"){buildLandkreisFilter();applyStateToUI();}
+  else if(type==="gemeinde"){buildGemeindeFilter();applyStateToUI();}
+  else applyStateToUI();
 }
 
 function toggleFavChip(type,key){
@@ -1163,7 +1177,7 @@ function _termMatchFav(t,f){
   const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
   if(f.type==="verein")return t.verein===f.key;
   if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
-  if(f.type==="ortschaft")return tOrt===f.key;
+  if(f.type==="ortschaft"){const vereinHeimatort=(meta[t.verein]||{}).heimatort||"";return tOrt===f.key||vereinHeimatort===f.key;}
   if(f.type==="region"){const effLk=((meta[t.verein]||{}).landkreis)||"Landkreis Landshut";return effLk===f.key;}
   if(f.type==="gemeinde")return((meta[t.verein]||{}).gemeinde||"")===f.key;
   return false;
@@ -1192,7 +1206,8 @@ function render(){
     if(aktGemeinden.size>0){const m=meta[t.verein];if(!m||!aktGemeinden.has(m.gemeinde))return false;}
     if(aktOrte.size>0){
       const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-      if(!tOrt||!aktOrte.has(tOrt))return false;
+      const vereinHeimatort=(meta[t.verein]||{}).heimatort||"";
+      if(!aktOrte.has(tOrt)&&!aktOrte.has(vereinHeimatort))return false;
     }
     return true;
   });
