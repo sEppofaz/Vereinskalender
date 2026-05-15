@@ -1266,7 +1266,7 @@ function render(){
     _lastDatum=t.datum;
     return sep+`<div class="ev-card" style="border-left-color:${col}">
       <button class="ev-cal" onclick="exportICS(${idx})" title="Zum Kalender hinzufügen">&#128197;</button>
-      <button class="ev-fav${isFav?' on':''}" data-favk="${t.verein}" onclick="const _f=favorites.some(f=>f.type==='verein'&&f.key==='${t.verein.replace(/'/g,"\\'")}');toggleFavVerein('${t.verein.replace(/'/g,"\\'")}','${(labels[t.verein]||t.verein).replace(/'/g,"\\'")}');const _a=favorites.some(f=>f.type==='verein'&&f.key==='${t.verein.replace(/'/g,"\\'")}');this.classList.toggle('on',_a);this.style.filter=_a?'none':''" title="Verein als Favorit" style="position:absolute;top:10px;right:50px;background:none;border:none;font-size:15px;cursor:pointer;padding:4px;line-height:1">⭐</button>
+      <button class="ev-fav js-ev-fav-btn${isFav?' on':''}" data-favk="${t.verein}" data-fav-key="${t.verein.replace(/"/g,'&quot;')}" data-fav-label="${(labels[t.verein]||t.verein).replace(/"/g,'&quot;')}" title="Verein als Favorit" style="position:absolute;top:10px;right:50px;background:none;border:none;font-size:15px;cursor:pointer;padding:4px;line-height:1">⭐</button>
       ${uz?`<div class="ev-date">&#128336; ${uz}</div>`:""}
       <div class="ev-title" style="padding-right:74px">${t.bezeichnung}</div>
       ${ort}${badge}
@@ -1427,6 +1427,17 @@ async function startUpload(file){
 document.addEventListener("click",e=>{
   if(!e.target.closest("#srch-section"))
     document.getElementById("srch-dropdown").classList.remove("open");
+});
+
+/* ── Event-Delegation: Favoriten-Button auf Terminkarren ── */
+document.addEventListener("click",e=>{
+  const btn=e.target.closest(".js-ev-fav-btn");
+  if(btn){
+    toggleFavVerein(btn.dataset.favKey,btn.dataset.favLabel);
+    const isFavNow=favorites.some(f=>f.type==="verein"&&f.key===btn.dataset.favKey);
+    btn.classList.toggle("on",isFavNow);
+    btn.style.filter=isFavNow?"none":"";
+  }
 });
 
 document.querySelector(".content").addEventListener("scroll",function(){
@@ -1724,14 +1735,24 @@ async function approveVerein(id,btn){
   if(!confirm("Verein wirklich freigeben?"))return;
   const token=sessionStorage.getItem("ut")||"";
   btn.disabled=true;
-  await fetch(`/api/admin/vereine/${id}/approve`,{method:"POST",headers:{"X-Upload-Token":token}});
+  const resp=await fetch(`/api/admin/vereine/${id}/approve`,{method:"POST",headers:{"X-Upload-Token":token}});
+  if(!resp.ok){
+    alert("❌ Fehler – bitte erneut versuchen");
+    btn.disabled=false;
+    return;
+  }
   loadPendingVereine();
 }
 async function rejectVerein(id,btn){
   if(!confirm("Registrierung ablehnen?"))return;
   const token=sessionStorage.getItem("ut")||"";
   btn.disabled=true;
-  await fetch(`/api/admin/vereine/${id}/reject`,{method:"POST",headers:{"X-Upload-Token":token}});
+  const resp=await fetch(`/api/admin/vereine/${id}/reject`,{method:"POST",headers:{"X-Upload-Token":token}});
+  if(!resp.ok){
+    alert("❌ Fehler – bitte erneut versuchen");
+    btn.disabled=false;
+    return;
+  }
   loadPendingVereine();
 }
 
@@ -2198,6 +2219,7 @@ async function updateOrtschaft(name,action){
     body:JSON.stringify({name,action}),
   });
   if(res.ok)loadOrtschaften();
+  else alert("❌ Fehler beim Speichern");
 }
 
 /* ── Termine-Tab (Admin) ── */
@@ -2556,8 +2578,8 @@ async function doConfirmImport(){
   // null = "eigener Verein" ist eine gültige Entscheidung; undefined = noch nicht entschieden
   // Da wir null als default setzen (eigener Verein), sind alle immer entschieden.
   const token=sessionStorage.getItem("ut")||"";
-  const confirm=Object.entries(_pendingDecisions).filter(([,v])=>v==="whitelist").map(([k])=>k);
-  const reject =Object.entries(_pendingDecisions).filter(([,v])=>v==="blacklist").map(([k])=>k);
+  const confirmList=Object.entries(_pendingDecisions).filter(([,v])=>v==="whitelist").map(([k])=>k);
+  const rejectList =Object.entries(_pendingDecisions).filter(([,v])=>v==="blacklist").map(([k])=>k);
   const key_remappings=Object.fromEntries(
     Object.entries(_pendingKeyRemappings).filter(([,v])=>v!==null)
   );
@@ -2567,7 +2589,7 @@ async function doConfirmImport(){
     const res=await fetch("/api/confirm-import",{
       method:"POST",
       headers:{"Content-Type":"application/json","X-Upload-Token":token},
-      body:JSON.stringify({import_id:_pendingId,confirm,reject,key_remappings}),
+      body:JSON.stringify({import_id:_pendingId,confirm:confirmList,reject:rejectList,key_remappings}),
     });
     const d=await res.json();
     document.getElementById("ort-confirm-modal").remove();
