@@ -1157,38 +1157,47 @@ function renderSearchChips(){
   el.innerHTML=searchChips.map((c,i)=>`<span class="srch-chip">${c.icon} ${c.label}<span class="srch-chip-x" onclick="removeSearchChip(${i})">&#10005;</span></span>`).join("");
 }
 
+/* ── Favorit-Match (zentrale Hilfsfunktion) ── */
+function _termMatchFav(t,f){
+  if(!activeFavs.has(f.type+":"+String(f.key)))return false;
+  const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
+  if(f.type==="verein")return t.verein===f.key;
+  if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
+  if(f.type==="ortschaft")return tOrt===f.key;
+  if(f.type==="region"){const effLk=((meta[t.verein]||{}).landkreis)||"Landkreis Landshut";return effLk===f.key;}
+  if(f.type==="gemeinde")return((meta[t.verein]||{}).gemeinde||"")===f.key;
+  return false;
+}
+
 /* ── Render events ── */
 function render(){
   if(!ready)return;
   const h=new Date();h.setHours(0,0,0,0);
+  const hasFavs=activeFavs.size>0;
+
   let out=allT.filter(t=>{
-    const isFavActive=activeFavs.has("verein:"+t.verein);
-    if(!aktVereine.has(t.verein)&&!isFavActive)return false;
-    if(aktRubrikSet.size>0&&!isFavActive){const r=rubriken[t.verein]||"Verein";if(!aktRubrikSet.has(r))return false;}
-    if(aktLandkreis!==null){
-      const m=meta[t.verein];
-      if(!m||m.landkreis!==aktLandkreis)return false;
-    }
-    if(aktGemeinden.size>0&&!isFavActive){
-      const m=meta[t.verein];
-      if(!m||!aktGemeinden.has(m.gemeinde))return false;
-    }
-    if(aktOrte.size>0){
-      const tOrt=(t.ortschaft&&t.ortschaft.trim())
-                 ?t.ortschaft.trim()
-                 :_extractOrtschaft(t.ort);
-      if(!tOrt||!aktOrte.has(tOrt))return false;
-    }
+    // Zeitraum gilt immer
     const d=pd(t.datum);
     if(zeitraum==="zukunft"&&d<h)return false;
     if(zeitraum!=="alle"&&zeitraum!=="zukunft"){
       const b=new Date(h);b.setDate(b.getDate()+parseInt(zeitraum));
       if(d<h||d>b)return false;
     }
+    // Favoriten überschreiben alle anderen Filter vollständig
+    if(hasFavs)return favorites.some(f=>_termMatchFav(t,f));
+    // Normaler UND-Filter
+    if(!aktVereine.has(t.verein))return false;
+    if(aktRubrikSet.size>0){const r=rubriken[t.verein]||"Verein";if(!aktRubrikSet.has(r))return false;}
+    if(aktLandkreis!==null){const m=meta[t.verein];if(!m||m.landkreis!==aktLandkreis)return false;}
+    if(aktGemeinden.size>0){const m=meta[t.verein];if(!m||!aktGemeinden.has(m.gemeinde))return false;}
+    if(aktOrte.size>0){
+      const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
+      if(!tOrt||!aktOrte.has(tOrt))return false;
+    }
     return true;
   });
 
-  // Suchfilter: OR innerhalb gleichen Typs, AND zwischen Typen
+  // Suchfilter: OR innerhalb gleichen Typs, AND zwischen Typen (gilt immer)
   if(searchChips.length>0){
     const vChips=searchChips.filter(c=>c.type==="verein");
     const oChips=searchChips.filter(c=>c.type==="ort");
@@ -1207,20 +1216,7 @@ function render(){
     });
   }
 
-  // Favoriten-Quick-Filter
-  if(activeFavs.size>0){
-    out=out.filter(t=>favorites.some(f=>{
-      if(!activeFavs.has(f.type+":"+String(f.key)))return false;
-      if(f.type==="verein")return t.verein===f.key;
-      if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
-      if(f.type==="ortschaft")return(t.ortschaft||"").trim()===f.key;
-      if(f.type==="region"){const effLk=((meta[t.verein]||{}).landkreis)||"Landkreis Landshut";return effLk===f.key;}
-      if(f.type==="gemeinde"){return((meta[t.verein]||{}).gemeinde||"")===f.key;}
-      return false;
-    }));
-  }
-
-  // Freitext-Filter (live, kein Chip nötig)
+  // Freitext-Filter (gilt immer)
   if(srchText.length>=2){
     out=out.filter(t=>{
       const bez=t.bezeichnung.toLowerCase();
