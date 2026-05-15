@@ -494,11 +494,24 @@ def cmd_add(url: str, secrets: dict) -> None:
     gemeinden.append(eintrag)
     GEMEINDEN_FILE.write_text(json.dumps(gemeinden, ensure_ascii=False, indent=2))
 
-    send_telegram(token, chat_id,
-                  f"✅ Gemeinde hinzugefügt:\n"
-                  f"Name: {name}\nKey: {slug}\nID: {c_id[:8]}…\n\n"
-                  f"Mit /heimat den ersten Import starten.")
-    _log(f"✅ Gemeinde hinzugefügt: {name} ({c_id})")
+    # Prüfen ob Gemeinde-Name in gemeinde_map bekannt ist
+    try:
+        vt = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
+        gmap = vt.get("_ortschaften", {}).get("gemeinde_map", {})
+        in_map = name in gmap or any(v == name for v in gmap.values())
+    except Exception:
+        in_map = True  # im Zweifel keine Warnung
+
+    msg = (f"✅ Gemeinde hinzugefügt:\n"
+           f"Name: {name}\nKey: {slug}\nID: {c_id[:8]}…\n\n")
+    if not in_map:
+        msg += (f"⚠️ '{name}' fehlt noch in der Ortschaft→Gemeinde-Map!\n"
+                f"Bitte vor dem ersten /heimat-Import ergänzen:\n"
+                f"  Ortschaft '{name}' → offizielle Gemeinde (z.B. 'Gemeinde {name}')\n"
+                f"Sonst erscheint kein Gemeinde-Filter-Chip für diese Gemeinde.\n\n")
+    msg += "Mit /heimat den ersten Import starten."
+    send_telegram(token, chat_id, msg)
+    _log(f"✅ Gemeinde hinzugefügt: {name} ({c_id})" + ("" if in_map else " ⚠️ nicht in gemeinde_map"))
 
 
 def _get_dropbox_token(secrets: dict) -> str:
