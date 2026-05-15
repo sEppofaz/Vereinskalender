@@ -808,7 +808,9 @@ def api_termine():
             log(f"⚠️  Gottesdienste in API: {e}")
 
     json_meta   = raw.get("_meta", {})
-    ortschaften = raw.get("_ortschaften", {"whitelist": [], "blacklist": []})
+    ort_cfg     = raw.get("_ortschaften", {"whitelist": [], "blacklist": []})
+    ortschaften = {"whitelist": ort_cfg.get("whitelist", []), "blacklist": ort_cfg.get("blacklist", [])}
+    gemeinde_map = ort_cfg.get("gemeinde_map", {})
 
     # DB-Meta laden (Vereinsadmin-Selbstverwaltung, Prio 2); JSON überschreibt (Superadmin, Prio 1)
     try:
@@ -837,7 +839,7 @@ def api_termine():
     rubriken    = {k: _get_rubrik(k, v, merged_meta.get(k, {})) for k, v in labels.items()}
     return (
         json.dumps({"labels": labels, "termine": termine, "meta": merged_meta,
-                    "ortschaften": ortschaften, "rubriken": rubriken}, ensure_ascii=False),
+                    "ortschaften": ortschaften, "gemeinde_map": gemeinde_map, "rubriken": rubriken}, ensure_ascii=False),
         200,
         {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache, must-revalidate"},
     )

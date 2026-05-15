@@ -474,7 +474,7 @@ const WD=["So","Mo","Di","Mi","Do","Fr","Sa"];
 const MO=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 const ZEIT_LBL={"zukunft":"Künftig","30":"30 Tage","90":"3 Monate","365":"1 Jahr","alle":"Alle"};
 
-let allT=[],labels={},colors={},ortMap={},meta={},allOrteAll={},rubriken={};
+let allT=[],labels={},colors={},ortMap={},meta={},allOrteAll={},rubriken={},gemeindeMap={},ortBlacklist=new Set();
 let zeitraum="zukunft",aktOrte=new Set(),aktVereine=new Set(),aktLandkreis=null,aktGemeinden=new Set(),ready=false;
 let searchChips=[],srchResults=[];
 const secOpen={zeit:false,lk:false,gem:false,ort:false,ver:false,hlp:false};
@@ -557,6 +557,8 @@ async function load(){
   allT=j.termine||[];
   meta=j.meta||{};
   rubriken=j.rubriken||{};
+  gemeindeMap=j.gemeinde_map||{};
+  ortBlacklist=new Set((j.ortschaften||{}).blacklist||[]);
   Object.keys(labels).sort().forEach((k,i)=>colors[k]=COLORS[i%COLORS.length]);
 
   const tmp={};
@@ -703,15 +705,10 @@ function filterGemeindeChipsForLandkreis(){
 function filterOrtChipsForGemeinde(){
   const chips=document.querySelectorAll("[data-o]:not([data-o='alle'])");
   if(!aktGemeinden.size){chips.forEach(c=>c.style.display="");return;}
-  const vereinsInGem=new Set(
-    Object.entries(meta).filter(([,m])=>aktGemeinden.has(m.gemeinde)).map(([k])=>k)
-  );
-  const orteInGem=new Set();
-  allT.forEach(t=>{
-    const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-    if(o&&vereinsInGem.has(t.verein))orteInGem.add(o);
+  chips.forEach(c=>{
+    const ortGemeinde=gemeindeMap[c.dataset.o];
+    c.style.display=(ortGemeinde&&aktGemeinden.has(ortGemeinde))?"":"none";
   });
-  chips.forEach(c=>c.style.display=orteInGem.has(c.dataset.o)?"":"none");
 }
 
 /* ── Badges & Reset-Button ── */
@@ -784,10 +781,11 @@ function buildOrtFilter(){
   const fallbackCount={};
   allT.forEach(t=>{
     if(t.ortschaft&&t.ortschaft.trim()){
-      confirmedOrte.add(t.ortschaft.trim());
+      const o=t.ortschaft.trim();
+      if(!ortBlacklist.has(o))confirmedOrte.add(o);
     } else {
       const o=_extractOrtschaft(t.ort);
-      if(o)fallbackCount[o]=(fallbackCount[o]||0)+1;
+      if(o&&!ortBlacklist.has(o))fallbackCount[o]=(fallbackCount[o]||0)+1;
     }
   });
   const ortSet=new Set([...confirmedOrte,
@@ -844,7 +842,7 @@ function filterOrtChipsForLandkreis(){
   const orteInLk=new Set();
   allT.forEach(t=>{
     const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-    if(o&&vereinsInLk.has(t.verein))orteInLk.add(o);
+    if(o&&!ortBlacklist.has(o)&&vereinsInLk.has(t.verein))orteInLk.add(o);
   });
   chips.forEach(c=>c.style.display=orteInLk.has(c.dataset.o)?"":"none");
 }
