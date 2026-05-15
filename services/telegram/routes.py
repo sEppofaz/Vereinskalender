@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import threading
+import traceback
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
@@ -302,7 +303,6 @@ def _collect_alle_termine_30() -> str:
 @telegram_bp.route("/telegram", methods=["POST"])
 def telegram_webhook():
     data    = request.get_json(silent=True) or {}
-    log(f"[tg] update_id={data.get('update_id')} keys={list(data.keys())}")
     message = data.get("message", {})
     chat_id = str(message.get("chat", {}).get("id", ""))
     text    = message.get("text", "").strip()
@@ -481,7 +481,6 @@ def telegram_webhook():
         cb_data = callback_query.get("data", "")
         cb_chat = str(callback_query.get("from", {}).get("id", ""))
 
-        log(f"[tg] cb_chat={cb_chat!r} expected={TELEGRAM_CHAT_ID!r} cb_data={cb_data!r}")
         if TELEGRAM_CHAT_ID and cb_chat != TELEGRAM_CHAT_ID:
             answer_telegram_callback(cb_id)
             return "", 200
@@ -519,7 +518,6 @@ def telegram_webhook():
             uid = cb_data.split(":", 1)[1]
             if cb_data.startswith("heimat_ok:"):
                 def _do_heimat_import(u=uid):
-                    import traceback
                     try:
                         import importlib.util, sys as _sys
                         spec = importlib.util.spec_from_file_location(
