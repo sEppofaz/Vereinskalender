@@ -630,7 +630,7 @@ function buildLandkreisFilter(){
   const section=document.getElementById("lk-section");
   const container=document.getElementById("lk-chips");
   const landkreise=[...new Set(Object.values(meta).map(m=>m.landkreis).filter(Boolean))].sort();
-  if(!landkreise.length){section.style.display="none";return;}
+  if(landkreise.length<=1){section.style.display="none";return;}
   section.style.display="";
   landkreise.forEach(lk=>{
     const isFav=favorites.some(f=>f.type==="region"&&f.key===lk);
