@@ -691,6 +691,7 @@ def api_vereine_post():
     parts = labels.get(key, "").strip().split()
     lw    = parts[-1].split("/")[0] if parts else ""
     return json.dumps({
+        "ok": True,
         "key": key, "name": labels.get(key, ""),
         "heimatort": m2.get("heimatort", lw if len(lw) > 4 else ""),
         "heimatort_explizit": "heimatort" in m2,
