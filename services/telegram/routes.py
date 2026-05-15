@@ -308,7 +308,7 @@ def telegram_webhook():
     chat_id = str(message.get("chat", {}).get("id", ""))
     text    = message.get("text", "").strip()
 
-    if TELEGRAM_CHAT_ID and chat_id != TELEGRAM_CHAT_ID:
+    if TELEGRAM_CHAT_ID and chat_id != TELEGRAM_CHAT_ID and not data.get("callback_query"):
         return "", 200
 
     if text == "/status":
