@@ -526,7 +526,9 @@ def telegram_webhook():
                         mod = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(mod)
                         result = mod.do_import(u)
+                        log(f"[heimat] do_import result: {result!r}, token_set={bool(TELEGRAM_TOKEN)}, chat={TELEGRAM_CHAT_ID!r}")
                         send_telegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, result)
+                        log("[heimat] send_telegram OK")
                     except Exception as e:
                         tb = traceback.format_exc()
                         log(f"❌ heimat-Import Thread-Fehler: {e}\n{tb}")
