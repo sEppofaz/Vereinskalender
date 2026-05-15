@@ -12,6 +12,7 @@ from flask import Blueprint, request
 
 from shared.flask_notify import (
     TELEGRAM_CHAT_ID,
+    TELEGRAM_TOKEN,
     answer_telegram_callback,
     send_telegram,
     send_telegram_inline,
@@ -524,9 +525,9 @@ def telegram_webhook():
                         mod = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(mod)
                         result = mod.do_import(u)
-                        send_telegram(TELEGRAM_CHAT_ID, result)
+                        send_telegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, result)
                     except Exception as e:
-                        send_telegram(TELEGRAM_CHAT_ID, f"❌ heimat-Import fehlgeschlagen: {e}")
+                        send_telegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, f"❌ heimat-Import fehlgeschlagen: {e}")
                 answer_telegram_callback(cb_id, "⏳ Importiere…")
                 threading.Thread(target=_do_heimat_import, daemon=True).start()
             else:
