@@ -518,6 +518,7 @@ def telegram_webhook():
             uid = cb_data.split(":", 1)[1]
             if cb_data.startswith("heimat_ok:"):
                 def _do_heimat_import(u=uid):
+                    import traceback
                     try:
                         import importlib.util, sys as _sys
                         spec = importlib.util.spec_from_file_location(
@@ -527,7 +528,12 @@ def telegram_webhook():
                         result = mod.do_import(u)
                         send_telegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, result)
                     except Exception as e:
-                        send_telegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, f"❌ heimat-Import fehlgeschlagen: {e}")
+                        tb = traceback.format_exc()
+                        log(f"❌ heimat-Import Thread-Fehler: {e}\n{tb}")
+                        try:
+                            send_telegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, f"❌ heimat-Import fehlgeschlagen: {e}")
+                        except Exception as e2:
+                            log(f"❌ Telegram-Senden fehlgeschlagen: {e2}")
                 answer_telegram_callback(cb_id, "⏳ Importiere…")
                 threading.Thread(target=_do_heimat_import, daemon=True).start()
             else:
