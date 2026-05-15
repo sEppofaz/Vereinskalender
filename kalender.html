@@ -2099,8 +2099,8 @@ async function updateOrtschaft(name,action){
 }
 
 /* ── Termine-Tab (Admin) ── */
-let _admTermine=[];
-async function loadTermine(){
+let _admTermine=[], _trmScrollPos=0;
+async function loadTermine(restoreScroll=false){
   const el=document.getElementById("trm-tab-content");
   const today=new Date().toISOString().slice(0,10);
   el.innerHTML=`
@@ -2118,6 +2118,7 @@ async function loadTermine(){
     _admTermine=(d.termine||[]).map(t=>({...t,_vereinName:(d.labels||{})[t.verein]||t.verein}));
     _admTermine.sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
     renderTermineList();
+    if(restoreScroll){requestAnimationFrame(()=>{const c=document.querySelector(".content");if(c)c.scrollTop=_trmScrollPos;});}
   }catch(e){
     const r=document.getElementById("trm-results");
     if(r)r.innerHTML='<div style="color:red;padding:20px">Fehler beim Laden</div>';
@@ -2153,6 +2154,7 @@ function renderTermineList(){
   `;
 }
 function showTerminEdit(idx){
+  _trmScrollPos=document.querySelector(".content")?.scrollTop||0;
   const t=_admTermine[idx];
   const el=document.getElementById("trm-tab-content");
   const vereinsOpts=Object.entries(labels)
@@ -2161,7 +2163,7 @@ function showTerminEdit(idx){
     .join("");
   el.innerHTML=`
     <div style="margin-bottom:12px">
-      <button onclick="loadTermine()" style="background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;padding:0">&#8592; Alle Termine</button>
+      <button onclick="loadTermine(true)" style="background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;padding:0">&#8592; Alle Termine</button>
     </div>
     <div class="filter-card" style="padding:14px 14px 16px">
       <div style="margin-bottom:10px">
@@ -2181,7 +2183,7 @@ function showTerminEdit(idx){
           style="flex:1;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer">
           Speichern
         </button>
-        <button onclick="loadTermine()"
+        <button onclick="loadTermine(true)"
           style="padding:10px 16px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);color:var(--text2);font-size:14px;cursor:pointer">
           Abbrechen
         </button>
@@ -2230,7 +2232,7 @@ async function saveTermin(idx){
       msg.style.color="green";msg.textContent="✅ Gespeichert";
       Object.assign(_admTermine[idx],changes);
       if(body.new_verein_key)_admTermine[idx].verein=body.new_verein_key;
-      setTimeout(()=>loadTermine(),900);
+      setTimeout(()=>loadTermine(true),900);
     }else{
       msg.style.color="red";msg.textContent="❌ "+(d.error||"Fehler");
     }
