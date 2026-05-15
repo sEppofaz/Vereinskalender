@@ -482,6 +482,7 @@ def telegram_webhook():
         cb_data = callback_query.get("data", "")
         cb_chat = str(callback_query.get("from", {}).get("id", ""))
 
+        log(f"[tg] cb_chat={cb_chat!r} expected={TELEGRAM_CHAT_ID!r} cb_data={cb_data!r}")
         if TELEGRAM_CHAT_ID and cb_chat != TELEGRAM_CHAT_ID:
             answer_telegram_callback(cb_id)
             return "", 200
