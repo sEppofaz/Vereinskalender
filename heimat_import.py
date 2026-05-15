@@ -389,6 +389,12 @@ def cmd_import(secrets: dict) -> None:
     # Migration: alte Gemeinde-Keys beim Duplikat-Check überspringen
     existing  = _existing_events(exclude_keys=old_keys)
 
+    # Selbstverwaltungs-Flags aus _meta laden
+    try:
+        _sv_meta = json.loads(VEREINSTERMINE_FILE.read_text()).get("_meta", {}) if VEREINSTERMINE_FILE.exists() else {}
+    except Exception:
+        _sv_meta = {}
+
     alle_events = []
     fehler      = []
 
@@ -407,7 +413,8 @@ def cmd_import(secrets: dict) -> None:
             e["_landkreis"]  = g.get("landkreis", "Landkreis Landshut")
             e["quelle"]      = "heimat-info.de"
             e["quelle_url"]  = g.get("url", "")
-            e["_neu"]        = not _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing)
+            e["_sv"]         = bool(_sv_meta.get(e["_verein_key"], {}).get("selbstverwaltung", False))
+            e["_neu"]        = False if e["_sv"] else not _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing)
         alle_events.extend(events)
         neu_count = sum(1 for e in events if e["_neu"])
         _log(f"  → {len(events)} Termine ({neu_count} neu)")
@@ -418,7 +425,8 @@ def cmd_import(secrets: dict) -> None:
 
     alle_events.sort(key=lambda x: (x["datum"], x.get("uhrzeit", "")))
     neu_gesamt  = sum(1 for e in alle_events if e["_neu"])
-    dup_gesamt  = len(alle_events) - neu_gesamt
+    sv_gesamt   = sum(1 for e in alle_events if e.get("_sv"))
+    dup_gesamt  = sum(1 for e in alle_events if not e["_neu"] and not e.get("_sv"))
 
     uid = str(uuid.uuid4())[:8]
     Path(f"/tmp/heimat_pending_{uid}.json").write_text(
@@ -437,11 +445,19 @@ def cmd_import(secrets: dict) -> None:
     if len(neue) > 15:
         vorschau += f"\n… +{len(neue)-15} weitere neue"
 
+    sv_labels   = sorted({e.get("_label") or e["_verein_key"] for e in alle_events if e.get("_sv")})
+    sv_hinweis  = (f"\n\n⛔ Selbstverwaltete Vereine ignoriert ({sv_gesamt} Termine): "
+                   + ", ".join(sv_labels)) if sv_gesamt else ""
+    zähler      = f"Gesamt: {len(alle_events)} | 🆕 Neu: {neu_gesamt} | ⏭ Duplikate: {dup_gesamt}"
+    if sv_gesamt:
+        zähler += f" | 🔒 SV: {sv_gesamt}"
+
     gemeinden_str = ", ".join(g["name"] for g in gemeinden)
     msg = (f"🏡 heimat-info Import\n"
            f"Gemeinden: {gemeinden_str}\n"
-           f"Gesamt: {len(alle_events)} | 🆕 Neu: {neu_gesamt} | ⏭ Duplikate: {dup_gesamt}\n\n"
-           + (vorschau if neue else "Alle Termine bereits vorhanden."))
+           f"{zähler}\n\n"
+           + (vorschau if neue else "Alle Termine bereits vorhanden.")
+           + sv_hinweis)
 
     send_telegram_inline(token, chat_id, msg, [[
         {"text": f"✅ {neu_gesamt} importieren", "callback_data": f"heimat_ok:{uid}"},

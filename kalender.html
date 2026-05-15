@@ -1975,6 +1975,9 @@ function renderVereine(list){
           style="padding:5px 6px;border:1.5px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;max-width:120px">
           ${opts}
         </select>
+        <button onclick="toggleSelbstverwaltung('${v.key.replace(/'/g,"\\'")}','${v.name.replace(/'/g,"\\'")}',${!!v.selbstverwaltung})"
+          title="${v.selbstverwaltung?'Selbstverwaltung aktiv – deaktivieren':'Selbstverwaltung inaktiv – aktivieren'}"
+          style="background:none;border:none;font-size:15px;cursor:pointer;padding:0 2px;opacity:${v.selbstverwaltung?1:0.22};flex-shrink:0">🔒</button>
         <button class="ver-del-btn" onclick="deleteVerein('${v.key.replace(/'/g,"\\'")}','${v.name.replace(/'/g,"\\'")}',${nT})">&#128465;</button>
       </div>`;
     }).join("");
@@ -2022,10 +2025,14 @@ function renderVereineByOrt(list){
     const items=grouped[ort].map(v=>{
       const nT=v.nTermine||0;
       const dot=v.heimatort_explizit?"#34c759":"var(--text3)";
+      const svBtn=`<button onclick="toggleSelbstverwaltung('${v.key.replace(/'/g,"\\'")}','${escHtml(v.name)}',${!!v.selbstverwaltung})"
+        title="${v.selbstverwaltung?'Selbstverwaltung aktiv':'Selbstverwaltung inaktiv'}"
+        style="background:none;border:none;font-size:13px;cursor:pointer;padding:0;opacity:${v.selbstverwaltung?1:0.22};flex-shrink:0">🔒</button>`;
       return `<div style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-bottom:.5px solid var(--border)">
         <span title="${v.heimatort_explizit?'explizit':'aus Label'}" style="width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
         <div style="flex:1;min-width:0;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(v.name)}">${escHtml(v.name)}</div>
         <span style="font-size:11px;color:var(--text3);flex-shrink:0;min-width:20px;text-align:right">${nT}T</span>
+        ${svBtn}
         ${inp(v.key,'heimatort',v.heimatort,'Ortschaft')}
         ${inp(v.key,'gemeinde',v.gemeinde,'Gemeinde')}
         ${inp(v.key,'landkreis',v.landkreis,'Landkreis')}
@@ -2062,6 +2069,31 @@ async function saveVereinMeta(key,field,value,inputEl){
       if(item){item[field]=d[field]||value;if(field==="heimatort")item.heimatort_explizit=!!d.heimatort_explizit;}
     }else{inputEl.style.borderColor="#ff3b30";alert("❌ "+(d.error||"Fehler"));}
   }catch(e){inputEl.style.borderColor="#ff3b30";alert("❌ Netzwerkfehler");}
+}
+
+async function toggleSelbstverwaltung(key,name,currentValue){
+  const neuerWert=!currentValue;
+  const msg=neuerWert
+    ?`🔒 Selbstverwaltung für "${name}" aktivieren?\n\nTermine dieses Vereins werden bei Importen nicht überschrieben. Admin wird beim Bearbeiten gewarnt.`
+    :`🔓 Selbstverwaltung für "${name}" deaktivieren?\n\nTermine können wieder bei allgemeinen Importen überschrieben werden.`;
+  if(!confirm(msg))return;
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const r=await fetch("/api/vereine",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Upload-Token":token},
+      body:JSON.stringify({key,selbstverwaltung:neuerWert}),
+    });
+    const d=await r.json();
+    if(d.ok){
+      const item=_lastVereinList.find(v=>v.key===key);
+      if(item)item.selbstverwaltung=neuerWert;
+      if(!meta[key])meta[key]={};
+      meta[key].selbstverwaltung=neuerWert;
+      if(_vereinViewMode==="ort")renderVereineByOrt(_lastVereinList);
+      else renderVereine(_lastVereinList);
+    }else alert("❌ "+(d.error||"Fehler"));
+  }catch(e){alert("❌ Netzwerkfehler");}
 }
 
 async function deleteVerein(key,name,nTermine){
@@ -2178,6 +2210,7 @@ async function loadTermine(restoreScroll=false){
     const d=await(await fetch("/api/termine")).json();
     _admTermine=(d.termine||[]).map(t=>({...t,_vereinName:(d.labels||{})[t.verein]||t.verein}));
     _admTermine.sort((a,b)=>(a.datum+(a.uhrzeit||"")).localeCompare(b.datum+(b.uhrzeit||"")));
+    if(d.meta)Object.assign(meta,d.meta);
     renderTermineList();
     if(restoreScroll){requestAnimationFrame(()=>{const c=document.querySelector(".content");if(c)c.scrollTop=_trmScrollPos;});}
   }catch(e){
@@ -2217,6 +2250,9 @@ function renderTermineList(){
 function showTerminEdit(idx){
   _trmScrollPos=document.querySelector(".content")?.scrollTop||0;
   const t=_admTermine[idx];
+  if((meta[t.verein]||{}).selbstverwaltung){
+    if(!confirm(`⚠️ "${labels[t.verein]||t.verein}" verwaltet ihre Termine selbst.\nTrotzdem bearbeiten?`))return;
+  }
   const el=document.getElementById("trm-tab-content");
   const vereinsOpts=Object.entries(labels)
     .sort((a,b)=>a[1].localeCompare(b[1],"de"))
@@ -2301,6 +2337,9 @@ async function saveTermin(idx){
 }
 async function deleteTermin(idx){
   const t=_admTermine[idx];
+  if((meta[t.verein]||{}).selbstverwaltung){
+    if(!confirm(`⚠️ "${labels[t.verein]||t.verein}" verwaltet ihre Termine selbst.\nTrotzdem löschen?`))return;
+  }
   if(!confirm(`Termin wirklich löschen?\n\n${t.datum}  ${t.uhrzeit||""}\n${t.bezeichnung}\n${t._vereinName}`))return;
   const token=sessionStorage.getItem("ut")||"";
   try{

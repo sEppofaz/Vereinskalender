@@ -619,6 +619,7 @@ def api_vereine_get():
             "gemeinde":           m.get("gemeinde", ""),
             "landkreis":          m.get("landkreis", ""),
             "rubrik":             _get_rubrik(key, name, m),
+            "selbstverwaltung":   bool(m.get("selbstverwaltung", False)),
         })
     n_termine = {}
     for vkey, events in raw.items():
@@ -677,6 +678,11 @@ def api_vereine_post():
             m["landkreis"] = val
         else:
             m.pop("landkreis", None)
+    if "selbstverwaltung" in body:
+        if body["selbstverwaltung"]:
+            m["selbstverwaltung"] = True
+        else:
+            m.pop("selbstverwaltung", None)
     plz = body.get("plz", "").strip()
     if plz and re.match(r"^\d{5}$", plz):
         saved_heimatort = m.get("heimatort")
@@ -698,6 +704,7 @@ def api_vereine_post():
         "plz": m2.get("plz", ""), "gemeinde": m2.get("gemeinde", ""),
         "landkreis": m2.get("landkreis", ""),
         "rubrik": _get_rubrik(key, labels.get(key, ""), m2),
+        "selbstverwaltung": bool(m2.get("selbstverwaltung", False)),
     }, ensure_ascii=False), 200, {"Content-Type": "application/json; charset=utf-8"}
 
 
