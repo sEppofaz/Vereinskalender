@@ -659,9 +659,15 @@ function buildGemeindeFilter(){
   section.style.display="";
   container.innerHTML='<span class="chip on" data-gem="alle">Alle</span><span class="chip" onclick="toggleGemeinde(\'alle\')">Keine</span>';
   gemeinden.forEach(g=>{
+    const isFav=favorites.some(f=>f.type==="gemeinde"&&f.key===g);
     const c=document.createElement("span");
     c.className="chip"+(aktGemeinden.has(g)?" on":"");c.dataset.gem=g;
-    c.textContent=g.replace(/^(?:Gemeinde|Markt)\s+/,"");
+    c.appendChild(document.createTextNode(g.replace(/^(?:Gemeinde|Markt)\s+/,"")+" "));
+    const star=document.createElement("button");
+    star.className="fav-star"+(isFav?" on":"");star.textContent=isFav?"⭐":"☆";
+    star.title="Als Favorit speichern";
+    star.onclick=ev=>{ev.stopPropagation();toggleFavGemeinde(g);};
+    c.appendChild(star);
     c.onclick=()=>toggleGemeinde(g);
     container.appendChild(c);
   });
@@ -702,7 +708,7 @@ function filterOrtChipsForGemeinde(){
   );
   const orteInGem=new Set();
   allT.forEach(t=>{
-    const o=(t.ortschaft||"").trim();
+    const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
     if(o&&vereinsInGem.has(t.verein))orteInGem.add(o);
   });
   chips.forEach(c=>c.style.display=orteInGem.has(c.dataset.o)?"":"none");
@@ -837,7 +843,7 @@ function filterOrtChipsForLandkreis(){
   );
   const orteInLk=new Set();
   allT.forEach(t=>{
-    const o=(t.ortschaft||"").trim();
+    const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
     if(o&&vereinsInLk.has(t.verein))orteInLk.add(o);
   });
   chips.forEach(c=>c.style.display=orteInLk.has(c.dataset.o)?"":"none");
@@ -1027,6 +1033,16 @@ function toggleFavRegion(lk){
   buildLandkreisFilter();applyStateToUI();
 }
 
+function toggleFavGemeinde(g){
+  const gLabel=g.replace(/^(?:Gemeinde|Markt)\s+/,"");
+  const fi=favorites.findIndex(f=>f.type==="gemeinde"&&f.key===g);
+  if(fi>=0){favorites.splice(fi,1);activeFavs.delete("gemeinde:"+g);}
+  else{favorites.push({type:"gemeinde",key:g,label:gLabel,icon:"🏘"});activeFavs.add("gemeinde:"+g);}
+  saveFavorites();saveActiveFavs();
+  renderFavBar();updateAllBadges();render();
+  buildGemeindeFilter();applyStateToUI();
+}
+
 function openFavIcalFeed(){
   const favVereine=[...new Set(favorites.filter(f=>f.type==="verein").map(f=>f.key))];
   const base="webcal://vereinskalender.online/api/ical/feed";
@@ -1201,6 +1217,7 @@ function render(){
       if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
       if(f.type==="ortschaft")return(t.ortschaft||"").trim()===f.key;
       if(f.type==="region"){const effLk=((meta[t.verein]||{}).landkreis)||"Landkreis Landshut";return effLk===f.key;}
+      if(f.type==="gemeinde"){return((meta[t.verein]||{}).gemeinde||"")===f.key;}
       return false;
     }));
   }
