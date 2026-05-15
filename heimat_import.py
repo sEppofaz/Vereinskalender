@@ -15,7 +15,7 @@ import sys
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, "/opt/rename-webhook")
@@ -26,7 +26,15 @@ GEMEINDEN_FILE      = Path("/opt/rename-webhook/heimat_gemeinden.json")
 VEREINSTERMINE_FILE = Path("/opt/rename-webhook/vereinstermine.json")
 LOG_FILE            = "/var/log/pka-heimat.log"
 API_BASE            = "https://www.heimat-info.de/embeddings/events/v1/"
+API_EXPORT          = "https://heimatinfo-api-platform.azurewebsites.net"
+API_EXPORT_HEADERS  = {
+    "Origin":     "https://www.heimat-info.de",
+    "Referer":    "https://www.heimat-info.de/",
+    "User-Agent": "Mozilla/5.0",
+}
 DROPBOX_EXCEL_PATH  = "/Apps/Claude/Vereinskalender/heimat_preview.xlsx"
+
+_org_cache: dict[str, str] = {}
 
 MONATE     = {"Januar":1,"Februar":2,"März":3,"April":4,"Mai":5,"Juni":6,
                "Juli":7,"August":8,"September":9,"Oktober":10,"November":11,"Dezember":12}
@@ -103,6 +111,87 @@ def _fetch(c_id: str) -> str | None:
     except Exception as e:
         _log(f"  ❌ Fetch-Fehler c={c_id}: {e}")
         return None
+
+
+def _fetch_org_name(org_id: str) -> str:
+    """Holt Vereinsname via Organization-API (gecacht)."""
+    if org_id in _org_cache:
+        return _org_cache[org_id]
+    try:
+        req = urllib.request.Request(
+            f"{API_EXPORT}/organizations/{org_id}", headers=API_EXPORT_HEADERS)
+        with urllib.request.urlopen(req, timeout=8) as r:
+            name = json.loads(r.read()).get("name", "").strip()
+    except Exception:
+        name = ""
+    _org_cache[org_id] = name
+    return name
+
+
+def _fetch_all_events(c_id: str) -> list[dict]:
+    """Holt alle Events via Export-API (pageSize=50 max, paginiert via pageIndex)."""
+    all_events, page = [], 0
+    while True:
+        url = f"{API_EXPORT}/export/events?pageIndex={page}&pageSize=50&c={c_id}"
+        try:
+            req = urllib.request.Request(url, headers=API_EXPORT_HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                batch = json.loads(r.read())
+        except Exception as e:
+            _log(f"  ❌ Export-API Fehler page={page} c={c_id[:8]}: {e}")
+            break
+        if not batch:
+            break
+        all_events.extend(batch)
+        if len(batch) < 50:
+            break
+        page += 1
+    return all_events
+
+
+def _parse_api_events(api_events: list[dict], heute: str) -> list[dict]:
+    """Konvertiert Export-API JSON-Events in internes Format."""
+    try:
+        from zoneinfo import ZoneInfo
+        berlin = ZoneInfo("Europe/Berlin")
+    except ImportError:
+        berlin = None
+
+    events = []
+    for e in api_events:
+        if e.get("status") != "Published":
+            continue
+        start = e.get("startDate") or ""
+        if not start:
+            continue
+        try:
+            dt_utc = datetime.strptime(start[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+            if berlin:
+                dt_loc = dt_utc.astimezone(berlin)
+            else:
+                from datetime import timedelta
+                dt_loc = dt_utc + timedelta(hours=2)
+            datum   = dt_loc.strftime("%Y-%m-%d")
+            uhrzeit = "" if start.endswith("T00:00:00Z") else dt_loc.strftime("%H:%M")
+        except Exception:
+            continue
+        if datum < heute:
+            continue
+
+        bezeichnung = (e.get("title") or "").strip()
+        ort         = (e.get("location") or "").strip()
+        org_id      = e.get("organizationId") or ""
+        verein_name = _fetch_org_name(org_id) if org_id else ""
+
+        if bezeichnung:
+            events.append({
+                "datum":        datum,
+                "uhrzeit":      uhrzeit,
+                "bezeichnung":  bezeichnung,
+                "ort":          ort,
+                "_verein_name": verein_name,
+            })
+    return events
 
 
 def discover_c_id(url: str) -> str | None:
@@ -292,11 +381,11 @@ def cmd_import(secrets: dict) -> None:
 
     for g in gemeinden:
         _log(f"Fetche {g['name']} (c={g['c_id'][:8]}…)")
-        html = _fetch(g["c_id"])
-        if not html:
+        api_events = _fetch_all_events(g["c_id"])
+        if not api_events:
             fehler.append(g["name"])
             continue
-        events = _parse_events(html, heute)
+        events = _parse_api_events(api_events, heute)
         for e in events:
             veranst          = e.get("_verein_name", "")
             e["_verein_key"] = _slugify(veranst) or g["verein_key"]
@@ -441,7 +530,7 @@ def _generate_excel(events: list[dict], uid: str) -> bytes:
     ws.title = "Vorschau"
 
     headers = ["importieren", "datum", "uhrzeit", "bezeichnung",
-               "veranstalter", "ort", "ortschaft", "gemeinde"]
+               "veranstalter", "ort", "ortschaft", "gemeinde", "landkreis"]
     ws.append(headers)
     header_fill = PatternFill("solid", fgColor="6D28D9")
     header_font = Font(bold=True, color="FFFFFF")
@@ -460,9 +549,10 @@ def _generate_excel(events: list[dict], uid: str) -> bytes:
             e.get("ort", ""),
             e.get("ortschaft", "") or e.get("_gemeinde", ""),
             e.get("_gemeinde", ""),
+            e.get("_landkreis", ""),
         ])
 
-    for i, w in enumerate([12, 12, 8, 40, 30, 25, 20, 15], 1):
+    for i, w in enumerate([12, 12, 8, 40, 30, 25, 20, 15, 20], 1):
         ws.column_dimensions[ws.cell(1, i).column_letter].width = w
 
     ws_meta = wb.create_sheet("Meta")
