@@ -4,7 +4,6 @@ import hmac
 import json
 import os
 import re
-import subprocess
 import tempfile
 import threading
 import uuid as _uuid
@@ -19,9 +18,6 @@ from flask import Blueprint, abort, request
 from shared.flask_notify import TELEGRAM_CHAT_ID, send_telegram, send_telegram_inline
 from shared.kalender_core import (
     MEDIA_TYPES,
-    VEREINSTERMINE_FILE,
-    _HEIC_SUPPORTED,
-    _do_save_import,
     _kalender_pending,
     import_pdf_bytes,
     log,
@@ -180,65 +176,8 @@ Regeln:
         dbx.files_move_v2(dropbox_path, new_path, autorename=False)
         log(f"✅  {filename}  →  {new_name}")
 
-        if "pfarrbrief" in new_name.lower():
-            log("📋  Pfarrbrief erkannt – starte Verarbeitung + Kalender-Upload")
-            threading.Thread(target=lambda p=new_path: _process_pfarrbrief(dbx, p), daemon=True).start()
-            threading.Thread(target=lambda p=new_path: _auto_upload_kalender(dbx, p), daemon=True).start()
-
-        if "jahreskalender" in new_name.lower() or "veranstaltungskalender" in new_name.lower():
-            log("📅  Veranstaltungskalender erkannt – starte Verarbeitung + Kalender-Upload")
-            threading.Thread(target=lambda p=new_path: _process_verein(dbx, p), daemon=True).start()
-            threading.Thread(target=lambda p=new_path: _auto_upload_kalender(dbx, p), daemon=True).start()
-
     finally:
         Path(tmp_path).unlink(missing_ok=True)
-
-
-def _process_pfarrbrief(dbx: dropbox.Dropbox, dropbox_path: str) -> None:
-    try:
-        subprocess.Popen(
-            ["/opt/rename-webhook/bin/python3", "/opt/rename-webhook/pfarrbrief_manager.py", dropbox_path],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    except Exception as e:
-        log(f"❌  Pfarrbrief-Verarbeitung fehlgeschlagen: {e}")
-
-
-def _process_verein(dbx: dropbox.Dropbox, dropbox_path: str) -> None:
-    try:
-        subprocess.Popen(
-            ["/opt/rename-webhook/bin/python3", "/opt/rename-webhook/verein_manager.py", dropbox_path],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    except Exception as e:
-        log(f"❌  Vereins-Verarbeitung fehlgeschlagen: {e}")
-
-
-def _auto_upload_kalender(dbx: dropbox.Dropbox, dropbox_path: str) -> None:
-    """Lädt eine PDF-Datei automatisch in den Vereinskalender hoch (kein HTTP-Self-Call)."""
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp_path = tmp.name
-        dbx.files_download_to_file(tmp_path, dropbox_path)
-        pdf_bytes = Path(tmp_path).read_bytes()
-
-        result   = import_pdf_bytes(pdf_bytes, ".pdf")
-        alle     = result["alle"]
-        auto_plz = result["auto_plz"]
-
-        try:
-            data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
-        except Exception:
-            data = {}
-
-        result_vereine, total = _do_save_import(alle, auto_plz, "", data)
-        log(f"📥  Auto-Upload Kalender: {total} Termine, {len(result_vereine)} Vereine")
-    except Exception as e:
-        log(f"❌  Auto-Upload Kalender fehlgeschlagen: {e}")
-    finally:
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
 
 
 def process_changes(dbx: dropbox.Dropbox) -> None:
