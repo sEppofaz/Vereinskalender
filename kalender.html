@@ -622,7 +622,6 @@ function buildLandkreisFilter(){
   const landkreise=[...new Set(Object.values(meta).map(m=>m.landkreis).filter(Boolean))].sort();
   if(!landkreise.length){section.style.display="none";return;}
   section.style.display="";
-  container.innerHTML='<span class="chip on" data-lk="alle">Alle</span><span class="chip" onclick="selectLandkreis(\'alle\')">Keine</span>';
   landkreise.forEach(lk=>{
     const isFav=favorites.some(f=>f.type==="region"&&f.key===lk);
     const lkLabel=lk.replace(/^Landkreis\s+/,"");
@@ -637,13 +636,12 @@ function buildLandkreisFilter(){
     c.onclick=()=>selectLandkreis(lk);
     container.appendChild(c);
   });
-  container.querySelector('[data-lk="alle"]').onclick=()=>selectLandkreis("alle");
 }
 
 function selectLandkreis(lk){
-  aktLandkreis=lk==="alle"?null:lk;
+  aktLandkreis=(lk==="alle"||aktLandkreis===lk)?null:lk;
   aktGemeinden=new Set();
-  document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk===lk));
+  document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk===(aktLandkreis||"alle")));
   filterGemeindeChipsForLandkreis();
   filterOrtChipsForGemeinde();
   filterOrtChipsForLandkreis();
@@ -1174,7 +1172,7 @@ function _termMatchFav(t,f){
   const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
   if(f.type==="verein")return t.verein===f.key;
   if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
-  if(f.type==="ortschaft"){const vereinHeimatort=(meta[t.verein]||{}).heimatort||"";return tOrt===f.key||vereinHeimatort===f.key;}
+  if(f.type==="ortschaft"){const vereinHeimatort=(meta[t.verein]||{}).heimatort||"";const inOrtGrp=(allOrteAll[f.key]||[]).includes(t.verein);return tOrt===f.key||vereinHeimatort===f.key||inOrtGrp;}
   if(f.type==="region"){const effLk=((meta[t.verein]||{}).landkreis)||"Landkreis Landshut";return effLk===f.key;}
   if(f.type==="gemeinde")return((meta[t.verein]||{}).gemeinde||"")===f.key;
   return false;
@@ -1204,7 +1202,8 @@ function render(){
     if(aktOrte.size>0){
       const tOrt=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
       const vereinHeimatort=(meta[t.verein]||{}).heimatort||"";
-      if(!aktOrte.has(tOrt)&&!aktOrte.has(vereinHeimatort))return false;
+      const inOrtGrp=[...aktOrte].some(o=>(allOrteAll[o]||[]).includes(t.verein));
+      if(!aktOrte.has(tOrt)&&!aktOrte.has(vereinHeimatort)&&!inOrtGrp)return false;
     }
     return true;
   });
