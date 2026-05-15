@@ -392,6 +392,8 @@ def cmd_import(secrets: dict) -> None:
             e["_label"]      = veranst or g.get("label", g["name"])
             e["_gemeinde"]   = g["name"]
             e["_landkreis"]  = g.get("landkreis", "Landkreis Landshut")
+            e["quelle"]      = "heimat-info.de"
+            e["quelle_url"]  = g.get("url", "")
             e["_neu"]        = not _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing)
         alle_events.extend(events)
         neu_count = sum(1 for e in events if e["_neu"])
@@ -530,7 +532,7 @@ def _generate_excel(events: list[dict], uid: str) -> bytes:
     ws.title = "Vorschau"
 
     headers = ["importieren", "datum", "uhrzeit", "bezeichnung",
-               "veranstalter", "ort", "ortschaft", "gemeinde", "landkreis"]
+               "veranstalter", "ort", "ortschaft", "gemeinde", "landkreis", "quelle_url"]
     ws.append(headers)
     header_fill = PatternFill("solid", fgColor="6D28D9")
     header_font = Font(bold=True, color="FFFFFF")
@@ -550,9 +552,10 @@ def _generate_excel(events: list[dict], uid: str) -> bytes:
             e.get("ortschaft", "") or e.get("_gemeinde", ""),
             e.get("_gemeinde", ""),
             e.get("_landkreis", ""),
+            e.get("quelle_url", ""),
         ])
 
-    for i, w in enumerate([12, 12, 8, 40, 30, 25, 20, 15, 20], 1):
+    for i, w in enumerate([12, 12, 8, 40, 30, 25, 20, 15, 20, 40], 1):
         ws.column_dimensions[ws.cell(1, i).column_letter].width = w
 
     ws_meta = wb.create_sheet("Meta")

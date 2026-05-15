@@ -624,6 +624,7 @@ def upload_process(user):
     # Alle Termine diesem Verein zuordnen
     for t in alle:
         t["verein"] = verein_name
+        t["quelle"] = verein_name
 
     try:
         data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}

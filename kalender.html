@@ -1101,7 +1101,7 @@ function render(){
       if(f.type==="verein")return t.verein===f.key;
       if(f.type==="ort")return(allOrteAll[f.key]||[]).includes(t.verein);
       if(f.type==="ortschaft")return(t.ortschaft||"").trim()===f.key;
-      if(f.type==="region"){const m=meta[t.verein];return!!(m&&m.landkreis===f.key);}
+      if(f.type==="region"){const effLk=((meta[t.verein]||{}).landkreis)||"Landkreis Landshut";return effLk===f.key;}
       return false;
     }));
   }
@@ -1134,11 +1134,15 @@ function render(){
     const ort=t.ort?`<div class="ev-ort">&#128205; ${t.ort}</div>`:"";
     const veranstLabel=t.veranstalter||labels[t.verein]||t.verein;
     const ortBadgeTxt=(t.ortschaft&&t.ortschaft.trim())?t.ortschaft.trim():null;
-    const lk=(meta[t.verein]||{}).landkreis;
-    const lkLabel=lk?lk.replace(/^Landkreis\s+/,""):"";
+    const lk=(meta[t.verein]||{}).landkreis||"Landkreis Landshut";
+    const lkLabel=lk.replace(/^Landkreis\s+/,"");
+    const quelleBadge=t.quelle?(t.quelle_url
+      ?`<a href="${t.quelle_url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">Quelle: ${t.quelle}</a>`
+      :`Quelle: ${t.quelle}`):"";
     const badge=`<span class="ev-badge" style="background:${col}22;color:${col}">${veranstLabel}</span>`
       +(ortBadgeTxt?`<span class="ev-badge" style="background:var(--bg2);color:var(--text2);margin-left:3px">📍 ${ortBadgeTxt}</span>`:"")
-      +(lkLabel?`<span class="ev-badge" style="background:var(--bg2);color:var(--text2);margin-left:3px">🗺 ${lkLabel}</span>`:"");
+      +(lkLabel?`<span class="ev-badge" style="background:var(--bg2);color:var(--text2);margin-left:3px">🗺 ${lkLabel}</span>`:"")
+      +(quelleBadge?`<span class="ev-badge" style="background:var(--bg2);color:var(--text2);margin-left:3px">${quelleBadge}</span>`:"");
     const idx=allT.indexOf(t);
     const isFav=favorites.some(f=>f.type==="verein"&&f.key===t.verein);
     const sep=t.datum!==_lastDatum?`<div class="ev-date-sep">${fmt(t.datum)}</div>`:"";
