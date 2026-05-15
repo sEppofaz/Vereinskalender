@@ -23,8 +23,9 @@
   --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;
   --text:#f2f2f7;--text2:#aeaeb2;--text3:#636366;
   --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.2);
-  --card:#2c2c2e;--accent:#8B5CF6;--hdr:#5B21B6;
-}}
+  --card:#2c2c2e;--accent:#8B5CF6;--tab:#A78BFA;--hdr:#5B21B6;
+}
+.fav-star{opacity:.6}}
 html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif}
 .app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
 
@@ -248,7 +249,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <div class="filter-card">
       <div class="filter-hdr" id="filter-hdr" onclick="toggleFilterCard()" style="cursor:pointer">
         <span class="filter-title" style="display:flex;align-items:center;gap:8px">
-          <span id="fc-arrow" style="font-size:13px;color:var(--text3);transition:transform .2s;display:inline-block">&#9654;</span>
+          <span id="fc-arrow" style="font-size:13px;color:var(--tab);transition:transform .2s;display:inline-block">&#9654;</span>
           Filter
         </span>
         <button class="reset-btn" id="reset-btn" onclick="event.stopPropagation();resetAll()" style="display:none">&#10005; Zur&#252;cksetzen</button>
