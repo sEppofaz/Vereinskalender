@@ -1924,6 +1924,7 @@ async function deleteVereinAdmin(verein_id,verein_name,verein_key){
 
 /* ── Vereine-Tab (Admin) ── */
 const RUBRIKEN_OPT=["Verein","Pfarrei","Kunst und Kultur","Sonstiges"];
+let _vereinViewMode="alpha",_lastVereinList=[];
 
 async function loadVereine(){
   const el=document.getElementById("ver-tab-content");
@@ -1931,6 +1932,7 @@ async function loadVereine(){
   const token=sessionStorage.getItem("ut")||"";
   try{
     const d=await(await fetch("/api/vereine",{headers:{"X-Upload-Token":token}})).json();
+    _lastVereinList=d;
     renderVereine(d);
   }catch(e){
     el.innerHTML='<div style="color:#ff3b30;padding:12px">Fehler beim Laden</div>';
@@ -1979,15 +1981,89 @@ function renderVereine(list){
     return `<div class="ver-section-hdr" id="ver-letter-${l}">${l}</div><div class="filter-card" style="padding:0;margin-bottom:6px">${items}</div>`;
   }).join("");
 
+  const viewToggle=`<div style="display:flex;gap:6px;margin-bottom:10px">
+    <button onclick="_vereinViewMode='alpha';renderVereine(_lastVereinList)"
+      style="padding:5px 14px;border:1.5px solid var(--border2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:${_vereinViewMode==='alpha'?'var(--accent)':'var(--bg)'};color:${_vereinViewMode==='alpha'?'#fff':'var(--text2)'}">A–Z</button>
+    <button onclick="_vereinViewMode='ort';renderVereineByOrt(_lastVereinList)"
+      style="padding:5px 14px;border:1.5px solid var(--border2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:${_vereinViewMode==='ort'?'var(--accent)':'var(--bg)'};color:${_vereinViewMode==='ort'?'#fff':'var(--text2)'}">Ortschaft</button>
+  </div>`;
   el.innerHTML=`
     <div style="font-size:12px;color:var(--text3);padding:0 2px 10px">${list.length} Vereine – Rubrik festlegen, Löschen entfernt Verein + alle Termine.</div>
-    ${alphaBar}
+    ${viewToggle}${alphaBar}
     ${rows}`;
 }
 
 function scrollToVereinLetter(l){
   const el=document.getElementById("ver-letter-"+l);
   if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function renderVereineByOrt(list){
+  _vereinViewMode="ort";
+  const el=document.getElementById("ver-tab-content");
+  if(!list||!list.length)return;
+  list=list.slice().sort((a,b)=>a.name.localeCompare(b.name,"de"));
+
+  // Gruppieren nach effektivem heimatort
+  const grouped={};
+  list.forEach(v=>{
+    const ort=v.heimatort||"–";
+    if(!grouped[ort])grouped[ort]=[];
+    grouped[ort].push(v);
+  });
+
+  const viewToggle=`<div style="display:flex;gap:6px;margin-bottom:10px">
+    <button onclick="_vereinViewMode='alpha';renderVereine(_lastVereinList)"
+      style="padding:5px 14px;border:1.5px solid var(--border2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--text2)">A–Z</button>
+    <button style="padding:5px 14px;border:1.5px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">Ortschaft</button>
+  </div>`;
+
+  const rows=Object.keys(grouped).sort((a,b)=>a.localeCompare(b,"de")).map(ort=>{
+    const firstV=grouped[ort][0];
+    const gem=firstV?.gemeinde||"";
+    const hdr=`<div style="font-size:12px;font-weight:700;color:var(--accent);padding:10px 14px 4px;margin-top:4px">
+      📍 ${ort}${gem?` <span style="font-weight:400;color:var(--text3)">· ${gem}</span>`:""}
+    </div>`;
+    const items=grouped[ort].map(v=>{
+      const nT=v.nTermine||0;
+      const isExplicit=v.heimatort_explizit;
+      const dotColor=isExplicit?"#34c759":"var(--text3)";
+      const dotTitle=isExplicit?"Explizit gesetzt":"Abgeleitet aus Label";
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:.5px solid var(--border)">
+        <span title="${dotTitle}" style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;margin-top:1px"></span>
+        <div style="flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(v.name)}">${escHtml(v.name)}</div>
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0">${nT}T</span>
+        <input type="text" value="${escHtml(v.heimatort||'')}" placeholder="Ortschaft"
+          data-vkey="${v.key}"
+          onchange="saveVereinHeimatort('${v.key.replace(/'/g,"\\'")}',this.value,this)"
+          style="width:110px;padding:4px 7px;border:1.5px solid var(--border2);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);flex-shrink:0">
+      </div>`;
+    }).join("");
+    return hdr+`<div class="filter-card" style="padding:0;margin-bottom:4px">${items}</div>`;
+  }).join("");
+
+  el.innerHTML=`<div style="font-size:12px;color:var(--text3);padding:0 2px 8px">
+    ${list.length} Vereine · <span style="color:#34c759">●</span> explizit gesetzt · <span style="color:var(--text3)">●</span> aus Label abgeleitet
+  </div>${viewToggle}${rows}`;
+}
+
+async function saveVereinHeimatort(key,value,inputEl){
+  const token=sessionStorage.getItem("ut")||"";
+  try{
+    const r=await fetch("/api/vereine",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Upload-Token":token},
+      body:JSON.stringify({key,heimatort:value}),
+    });
+    const d=await r.json();
+    if(d.ok){
+      inputEl.style.borderColor="#34c759";
+      setTimeout(()=>{inputEl.style.borderColor="";},1200);
+      // Lokale Daten + Punkte-Anzeige aktualisieren
+      const item=_lastVereinList.find(v=>v.key===key);
+      if(item){item.heimatort=d.heimatort||value;item.heimatort_explizit=!!d.heimatort_explizit;}
+    }else{inputEl.style.borderColor="#ff3b30";alert("❌ "+(d.error||"Fehler"));}
+  }catch(e){inputEl.style.borderColor="#ff3b30";alert("❌ Netzwerkfehler");}
 }
 
 async function deleteVerein(key,name,nTermine){
