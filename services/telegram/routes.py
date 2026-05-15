@@ -303,6 +303,7 @@ def _collect_alle_termine_30() -> str:
 @telegram_bp.route("/telegram", methods=["POST"])
 def telegram_webhook():
     data    = request.get_json(silent=True) or {}
+    log(f"[tg] update_id={data.get('update_id')} keys={list(data.keys())}")
     message = data.get("message", {})
     chat_id = str(message.get("chat", {}).get("id", ""))
     text    = message.get("text", "").strip()
