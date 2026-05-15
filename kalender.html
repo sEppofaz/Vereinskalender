@@ -59,11 +59,11 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
 /* ── Collapsible sections ── */
 .f-section{border-bottom:.5px solid var(--border)}
 .f-section:last-child{border-bottom:none}
-.f-toggle{width:100%;background:none;border:none;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:var(--text);font-size:14px;font-weight:500;text-align:left}
+.f-toggle{width:100%;background:none;border:none;padding:12px 14px;display:flex;align-items:center;justify-content:flex-start;gap:8px;cursor:pointer;color:var(--text);font-size:14px;font-weight:500;text-align:left}
 .f-name{display:flex;align-items:center;gap:8px}
 .f-badge{font-size:12px;font-weight:600;color:var(--tab)}
-.f-arrow{font-size:11px;color:var(--tab);transition:transform .2s}
-.f-arrow.open{transform:rotate(180deg)}
+.f-arrow{font-size:10px;color:var(--tab);transition:transform .2s;flex-shrink:0}
+.f-arrow.open{transform:rotate(90deg)}
 .f-content{display:none;padding:0 14px 13px}
 .f-content.open{display:block}
 
@@ -273,8 +273,8 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <!-- Zeitraum -->
       <div class="f-section">
         <button class="f-toggle" onclick="toggleSection('zeit')">
+          <span class="f-arrow" id="zeit-arrow">&#9654;</span>
           <span class="f-name">Zeitraum <span class="f-badge" id="zeit-badge">K&#252;nftig</span></span>
-          <span class="f-arrow" id="zeit-arrow">&#9660;</span>
         </button>
         <div class="f-content" id="zeit-content">
           <div class="chips">
@@ -290,8 +290,8 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <!-- Landkreis/Region (dynamisch) -->
       <div class="f-section" id="lk-section" style="display:none">
         <button class="f-toggle" onclick="toggleSection('lk')">
+          <span class="f-arrow" id="lk-arrow">&#9654;</span>
           <span class="f-name">Region <span class="f-badge" id="lk-badge">Alle</span></span>
-          <span class="f-arrow" id="lk-arrow">&#9660;</span>
         </button>
         <div class="f-content" id="lk-content">
           <div class="chips" id="lk-chips"></div>
@@ -301,8 +301,8 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <!-- Gemeinde (dynamisch) -->
       <div class="f-section" id="gem-section" style="display:none">
         <button class="f-toggle" onclick="toggleSection('gem')">
+          <span class="f-arrow" id="gem-arrow">&#9654;</span>
           <span class="f-name">Gemeinde <span class="f-badge" id="gem-badge">Alle</span></span>
-          <span class="f-arrow" id="gem-arrow">&#9660;</span>
         </button>
         <div class="f-content" id="gem-content">
           <div class="chips" id="gem-chips"></div>
@@ -312,8 +312,8 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <!-- Ortschaft (dynamisch) -->
       <div class="f-section" id="ort-section" style="display:none">
         <button class="f-toggle" onclick="toggleSection('ort')">
+          <span class="f-arrow" id="ort-arrow">&#9654;</span>
           <span class="f-name">Ortschaft <span class="f-badge" id="ort-badge">Alle</span></span>
-          <span class="f-arrow" id="ort-arrow">&#9660;</span>
         </button>
         <div class="f-content" id="ort-content">
           <div class="chips" id="ort-chips"></div>
@@ -323,8 +323,8 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <!-- Verein -->
       <div class="f-section">
         <button class="f-toggle" onclick="toggleSection('ver')">
+          <span class="f-arrow" id="ver-arrow">&#9654;</span>
           <span class="f-name">Verein <span class="f-badge" id="ver-badge">Alle</span></span>
-          <span class="f-arrow" id="ver-arrow">&#9660;</span>
         </button>
         <div class="f-content" id="ver-content">
           <div class="chips" id="ver-chips" style="padding-bottom:10px;border-bottom:.5px solid var(--border);margin-bottom:4px"></div>
