@@ -936,26 +936,21 @@ function renderRubrikBar(){
   if(!bar)return;
   const vorh=new Set(Object.values(rubriken));
   if(vorh.size<=1){bar.style.display="none";return;}
-  const reihenfolge=["alle","Verein","Pfarrei","Kunst und Kultur"];
+  const reihenfolge=["Verein","Pfarrei","Kunst und Kultur"];
   const extra=[...vorh].filter(r=>!reihenfolge.includes(r)).sort();
-  const tabs=["alle",...reihenfolge.slice(1).filter(r=>vorh.has(r)),...extra];
-  const icons={"alle":"&#127775; Alle","Verein":"&#127974; Vereine","Pfarrei":"&#9962; Pfarreien","Kunst und Kultur":"&#127914; Kunst &amp; Kultur"};
+  const tabs=[...reihenfolge.filter(r=>vorh.has(r)),...extra];
+  const icons={"Verein":"&#127974; Vereine","Pfarrei":"&#9962; Pfarreien","Kunst und Kultur":"&#127914; Kunst &amp; Kultur"};
   bar.style.display="flex";
-  const alleAn=aktRubrikSet.size===0;
   bar.innerHTML=tabs.map(r=>{
-    const on=r==="alle"?alleAn:aktRubrikSet.has(r);
-    const lbl=icons[r]||(r);
+    const on=aktRubrikSet.has(r);
+    const lbl=icons[r]||r;
     return `<button class="rubrik-chip${on?" on":""}" onclick="setRubrik('${r}')">${lbl}</button>`;
   }).join("");
 }
 
 function setRubrik(r){
-  if(r==="alle"){
-    aktRubrikSet.clear();
-  } else {
-    if(aktRubrikSet.has(r))aktRubrikSet.delete(r);
-    else aktRubrikSet.add(r);
-  }
+  if(aktRubrikSet.has(r))aktRubrikSet.delete(r);
+  else aktRubrikSet.add(r);
   if(aktRubrikSet.size===0)localStorage.removeItem(RUBRIK_KEY);
   else localStorage.setItem(RUBRIK_KEY,JSON.stringify([...aktRubrikSet]));
   renderRubrikBar();
@@ -995,7 +990,9 @@ function renderFavBar(){
   const el=document.getElementById("fav-bar");
   if(!favorites.length){el.style.display="none";el.innerHTML="";return;}
   el.style.display="flex";
-  el.innerHTML=favorites.map(f=>{
+  el.style.alignItems="center";
+  const label='<span style="font-size:11px;font-weight:700;color:var(--text3);white-space:nowrap;padding-right:4px;letter-spacing:.03em;align-self:center">Favoriten</span>';
+  el.innerHTML=label+favorites.map(f=>{
     const id=f.type+":"+String(f.key);
     const on=activeFavs.has(id);
     const key=String(f.key).replace(/"/g,"&quot;").replace(/'/g,"&#39;");
