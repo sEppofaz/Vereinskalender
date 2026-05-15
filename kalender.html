@@ -563,9 +563,15 @@ async function load(){
 
   const tmp={};
   Object.entries(labels).forEach(([k,l])=>{
-    const parts=l.trim().split(/\s+/);
-    const w=parts[parts.length-1].split("/")[0];
-    if(w.length>4){tmp[w]=tmp[w]||[];if(!tmp[w].includes(k))tmp[w].push(k);}
+    // Explizites meta.heimatort hat Prio; nur wenn nicht gesetzt: letztes Labelwort
+    const m=meta[k]||{};
+    let ort=m.heimatort||"";
+    if(!ort){
+      const parts=l.trim().split(/\s+/);
+      const w=parts[parts.length-1].split("/")[0];
+      if(w.length>4)ort=w;
+    }
+    if(ort){tmp[ort]=tmp[ort]||[];if(!tmp[ort].includes(k))tmp[ort].push(k);}
   });
   allOrteAll=tmp;
   ortMap={};
@@ -784,9 +790,9 @@ function buildOrtFilter(){
   const section=document.getElementById("ort-section");
   const container=document.getElementById("ort-chips");
 
-  // Nur explizit gesetzte meta.heimatort-Werte als Chips (keine Auto-Ableitungen aus Labels)
+  // allOrteAll enthält bereits aufgelöste Heimatorte (explizit > letztes Labelwort)
   const ortSet=new Set();
-  Object.values(meta).forEach(m=>{if(m.heimatort&&!ortBlacklist.has(m.heimatort))ortSet.add(m.heimatort);});
+  Object.keys(allOrteAll).forEach(o=>{if(!ortBlacklist.has(o))ortSet.add(o);});
 
   const orte=[...ortSet].sort((a,b)=>a.localeCompare(b,"de"));
   if(!orte.length){section.style.display="none";return;}
@@ -1101,7 +1107,7 @@ function onSearchInput(val){
       srchResults.push({type:"verein",key:k,label:l,icon:"&#127974;"});
   });
 
-  [...new Set(Object.values(meta).map(m=>m.heimatort).filter(h=>h&&!ortBlacklist.has(h)))].sort().forEach(ort=>{
+  Object.keys(allOrteAll).sort().forEach(ort=>{
     if(ort.toLowerCase().includes(q)&&!searchChips.find(c=>c.type==="ort"&&c.key===ort))
       srchResults.push({type:"ort",key:ort,label:ort,icon:"&#127968;"});
   });
