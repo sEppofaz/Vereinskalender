@@ -665,6 +665,18 @@ def api_vereine_post():
             m["heimatort"] = ort
         else:
             m.pop("heimatort", None)
+    if "gemeinde" in body:
+        val = body["gemeinde"].strip()
+        if val:
+            m["gemeinde"] = val
+        else:
+            m.pop("gemeinde", None)
+    if "landkreis" in body:
+        val = body["landkreis"].strip()
+        if val:
+            m["landkreis"] = val
+        else:
+            m.pop("landkreis", None)
     plz = body.get("plz", "").strip()
     if plz and re.match(r"^\d{5}$", plz):
         saved_heimatort = m.get("heimatort")

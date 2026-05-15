@@ -2004,13 +2004,8 @@ function renderVereineByOrt(list){
   if(!list||!list.length)return;
   list=list.slice().sort((a,b)=>a.name.localeCompare(b.name,"de"));
 
-  // Gruppieren nach effektivem heimatort
   const grouped={};
-  list.forEach(v=>{
-    const ort=v.heimatort||"–";
-    if(!grouped[ort])grouped[ort]=[];
-    grouped[ort].push(v);
-  });
+  list.forEach(v=>{const ort=v.heimatort||"–";if(!grouped[ort])grouped[ort]=[];grouped[ort].push(v);});
 
   const viewToggle=`<div style="display:flex;gap:6px;margin-bottom:10px">
     <button onclick="_vereinViewMode='alpha';renderVereine(_lastVereinList)"
@@ -2018,50 +2013,53 @@ function renderVereineByOrt(list){
     <button style="padding:5px 14px;border:1.5px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">Ortschaft</button>
   </div>`;
 
+  const inp=(key,field,val,ph)=>`<input type="text" value="${escHtml(val||'')}" placeholder="${ph}"
+    onchange="saveVereinMeta('${key.replace(/'/g,"\\'")}','${field}',this.value,this)"
+    style="width:100px;padding:4px 7px;border:1.5px solid var(--border2);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);flex-shrink:0">`;
+
   const rows=Object.keys(grouped).sort((a,b)=>a.localeCompare(b,"de")).map(ort=>{
-    const firstV=grouped[ort][0];
-    const gem=firstV?.gemeinde||"";
-    const hdr=`<div style="font-size:12px;font-weight:700;color:var(--accent);padding:10px 14px 4px;margin-top:4px">
-      📍 ${ort}${gem?` <span style="font-weight:400;color:var(--text3)">· ${gem}</span>`:""}
-    </div>`;
+    const hdr=`<div style="font-size:11px;font-weight:700;color:var(--accent);padding:8px 14px 3px;margin-top:4px">📍 ${escHtml(ort)}</div>`;
     const items=grouped[ort].map(v=>{
       const nT=v.nTermine||0;
-      const isExplicit=v.heimatort_explizit;
-      const dotColor=isExplicit?"#34c759":"var(--text3)";
-      const dotTitle=isExplicit?"Explizit gesetzt":"Abgeleitet aus Label";
-      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:.5px solid var(--border)">
-        <span title="${dotTitle}" style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;margin-top:1px"></span>
-        <div style="flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(v.name)}">${escHtml(v.name)}</div>
-        <span style="font-size:11px;color:var(--text3);flex-shrink:0">${nT}T</span>
-        <input type="text" value="${escHtml(v.heimatort||'')}" placeholder="Ortschaft"
-          data-vkey="${v.key}"
-          onchange="saveVereinHeimatort('${v.key.replace(/'/g,"\\'")}',this.value,this)"
-          style="width:110px;padding:4px 7px;border:1.5px solid var(--border2);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);flex-shrink:0">
+      const dot=v.heimatort_explizit?"#34c759":"var(--text3)";
+      return `<div style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-bottom:.5px solid var(--border)">
+        <span title="${v.heimatort_explizit?'explizit':'aus Label'}" style="width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
+        <div style="flex:1;min-width:0;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(v.name)}">${escHtml(v.name)}</div>
+        <span style="font-size:11px;color:var(--text3);flex-shrink:0;min-width:20px;text-align:right">${nT}T</span>
+        ${inp(v.key,'heimatort',v.heimatort,'Ortschaft')}
+        ${inp(v.key,'gemeinde',v.gemeinde,'Gemeinde')}
+        ${inp(v.key,'landkreis',v.landkreis,'Landkreis')}
       </div>`;
     }).join("");
     return hdr+`<div class="filter-card" style="padding:0;margin-bottom:4px">${items}</div>`;
   }).join("");
 
-  el.innerHTML=`<div style="font-size:12px;color:var(--text3);padding:0 2px 8px">
-    ${list.length} Vereine · <span style="color:#34c759">●</span> explizit gesetzt · <span style="color:var(--text3)">●</span> aus Label abgeleitet
-  </div>${viewToggle}${rows}`;
+  const hdrs=`<div style="display:flex;gap:6px;padding:0 14px;margin-bottom:2px;font-size:10px;font-weight:600;color:var(--text3)">
+    <div style="flex:1"></div><div style="min-width:20px"></div>
+    <div style="width:100px">Ortschaft</div>
+    <div style="width:100px">Gemeinde</div>
+    <div style="width:100px">Landkreis</div>
+  </div>`;
+
+  el.innerHTML=`<div style="font-size:12px;color:var(--text3);padding:0 2px 6px">
+    ${list.length} Vereine · <span style="color:#34c759">●</span> explizit · <span style="color:var(--text3)">●</span> aus Label
+  </div>${viewToggle}${hdrs}${rows}`;
 }
 
-async function saveVereinHeimatort(key,value,inputEl){
+async function saveVereinMeta(key,field,value,inputEl){
   const token=sessionStorage.getItem("ut")||"";
   try{
     const r=await fetch("/api/vereine",{
       method:"POST",
       headers:{"Content-Type":"application/json","X-Upload-Token":token},
-      body:JSON.stringify({key,heimatort:value}),
+      body:JSON.stringify({key,[field]:value}),
     });
     const d=await r.json();
     if(d.ok){
       inputEl.style.borderColor="#34c759";
-      setTimeout(()=>{inputEl.style.borderColor="";},1200);
-      // Lokale Daten + Punkte-Anzeige aktualisieren
+      setTimeout(()=>inputEl.style.borderColor="",1200);
       const item=_lastVereinList.find(v=>v.key===key);
-      if(item){item.heimatort=d.heimatort||value;item.heimatort_explizit=!!d.heimatort_explizit;}
+      if(item){item[field]=d[field]||value;if(field==="heimatort")item.heimatort_explizit=!!d.heimatort_explizit;}
     }else{inputEl.style.borderColor="#ff3b30";alert("❌ "+(d.error||"Fehler"));}
   }catch(e){inputEl.style.borderColor="#ff3b30";alert("❌ Netzwerkfehler");}
 }
