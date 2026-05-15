@@ -298,6 +298,17 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
         </div>
       </div>
 
+      <!-- Gemeinde (dynamisch) -->
+      <div class="f-section" id="gem-section" style="display:none">
+        <button class="f-toggle" onclick="toggleSection('gem')">
+          <span class="f-name">Gemeinde <span class="f-badge" id="gem-badge">Alle</span></span>
+          <span class="f-arrow" id="gem-arrow">&#9660;</span>
+        </button>
+        <div class="f-content" id="gem-content">
+          <div class="chips" id="gem-chips"></div>
+        </div>
+      </div>
+
       <!-- Ortschaft (dynamisch) -->
       <div class="f-section" id="ort-section" style="display:none">
         <button class="f-toggle" onclick="toggleSection('ort')">
@@ -464,9 +475,9 @@ const MO=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","De
 const ZEIT_LBL={"zukunft":"Künftig","30":"30 Tage","90":"3 Monate","365":"1 Jahr","alle":"Alle"};
 
 let allT=[],labels={},colors={},ortMap={},meta={},allOrteAll={},rubriken={};
-let zeitraum="zukunft",aktOrte=new Set(),aktVereine=new Set(),aktLandkreis=null,ready=false;
+let zeitraum="zukunft",aktOrte=new Set(),aktVereine=new Set(),aktLandkreis=null,aktGemeinden=new Set(),ready=false;
 let searchChips=[],srchResults=[];
-const secOpen={zeit:false,lk:false,ort:false,ver:false,hlp:false};
+const secOpen={zeit:false,lk:false,gem:false,ort:false,ver:false,hlp:false};
 const FAV_KEY="vk_favorites";
 const ACTIVE_FAV_KEY="vk_active_favs";
 let favorites=JSON.parse(localStorage.getItem(FAV_KEY)||"[]");
@@ -493,6 +504,7 @@ function saveState(){
       zeitraum,
       aktOrte:[...aktOrte],
       aktLandkreis,
+      aktGemeinden:[...aktGemeinden],
       deaktivierteVereine:deaktiviert
     }));
   }catch(e){}
@@ -515,6 +527,10 @@ function loadState(){
       const lks=new Set(Object.values(meta).map(m=>m.landkreis).filter(Boolean));
       aktLandkreis=lks.has(s.aktLandkreis)?s.aktLandkreis:null;
     }
+    if(Array.isArray(s.aktGemeinden)){
+      const alleG=new Set(Object.values(meta).map(m=>m.gemeinde).filter(Boolean));
+      aktGemeinden=new Set(s.aktGemeinden.filter(g=>alleG.has(g)));
+    }
     if(Array.isArray(s.deaktivierteVereine)){
       s.deaktivierteVereine.forEach(k=>{if(labels[k])aktVereine.delete(k);});
     }
@@ -526,6 +542,9 @@ function applyStateToUI(){
   const alleOrtChip=document.querySelector('[data-o="alle"]');
   if(alleOrtChip)alleOrtChip.classList.toggle("on",aktOrte.size===0);
   document.querySelectorAll("[data-o]:not([data-o='alle'])").forEach(c=>c.classList.toggle("on",aktOrte.has(c.dataset.o)));
+  const alleGemChip=document.querySelector('[data-gem="alle"]');
+  if(alleGemChip)alleGemChip.classList.toggle("on",aktGemeinden.size===0);
+  document.querySelectorAll("[data-gem]:not([data-gem='alle'])").forEach(c=>c.classList.toggle("on",aktGemeinden.has(c.dataset.gem)));
   const alleLkChip=document.querySelector('[data-lk="alle"]');
   if(alleLkChip)alleLkChip.classList.toggle("on",!aktLandkreis);
   document.querySelectorAll("[data-lk]:not([data-lk='alle'])").forEach(c=>c.classList.toggle("on",c.dataset.lk===aktLandkreis));
@@ -551,6 +570,7 @@ async function load(){
   Object.entries(tmp).forEach(([o,ks])=>{if(ks.length>=2)ortMap[o]=ks;});
 
   buildLandkreisFilter();
+  buildGemeindeFilter();
   buildOrtFilter();
   buildVereinFilter();
   aktVereine=new Set(Object.keys(labels));
@@ -620,10 +640,72 @@ function buildLandkreisFilter(){
 
 function selectLandkreis(lk){
   aktLandkreis=lk==="alle"?null:lk;
+  aktGemeinden=new Set();
   document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk===lk));
+  filterGemeindeChipsForLandkreis();
+  filterOrtChipsForGemeinde();
   filterOrtChipsForLandkreis();
+  filterVereinListForOrt();
   updateAllBadges();
   render();
+}
+
+/* ── Gemeinde filter ── */
+function buildGemeindeFilter(){
+  const section=document.getElementById("gem-section");
+  const container=document.getElementById("gem-chips");
+  const gemeinden=[...new Set(Object.values(meta).map(m=>m.gemeinde).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"de"));
+  if(!gemeinden.length){section.style.display="none";return;}
+  section.style.display="";
+  container.innerHTML='<span class="chip on" data-gem="alle">Alle</span><span class="chip" onclick="toggleGemeinde(\'alle\')">Keine</span>';
+  gemeinden.forEach(g=>{
+    const c=document.createElement("span");
+    c.className="chip"+(aktGemeinden.has(g)?" on":"");c.dataset.gem=g;
+    c.textContent=g.replace(/^(?:Gemeinde|Markt)\s+/,"");
+    c.onclick=()=>toggleGemeinde(g);
+    container.appendChild(c);
+  });
+  container.querySelector('[data-gem="alle"]').onclick=()=>toggleGemeinde("alle");
+}
+
+function toggleGemeinde(g){
+  if(g==="alle"){
+    aktGemeinden=new Set();
+  } else {
+    if(aktGemeinden.has(g))aktGemeinden.delete(g);else aktGemeinden.add(g);
+  }
+  const alleChip=document.querySelector('[data-gem="alle"]');
+  if(alleChip)alleChip.classList.toggle("on",aktGemeinden.size===0);
+  document.querySelectorAll("[data-gem]:not([data-gem='alle'])").forEach(c=>{
+    c.classList.toggle("on",aktGemeinden.has(c.dataset.gem));
+  });
+  filterOrtChipsForGemeinde();
+  filterVereinListForOrt();
+  updateAllBadges();
+  render();
+}
+
+function filterGemeindeChipsForLandkreis(){
+  const chips=document.querySelectorAll("[data-gem]:not([data-gem='alle'])");
+  if(!aktLandkreis){chips.forEach(c=>c.style.display="");return;}
+  const gemInLk=new Set(
+    Object.values(meta).filter(m=>m.landkreis===aktLandkreis&&m.gemeinde).map(m=>m.gemeinde)
+  );
+  chips.forEach(c=>c.style.display=gemInLk.has(c.dataset.gem)?"":"none");
+}
+
+function filterOrtChipsForGemeinde(){
+  const chips=document.querySelectorAll("[data-o]:not([data-o='alle'])");
+  if(!aktGemeinden.size){chips.forEach(c=>c.style.display="");return;}
+  const vereinsInGem=new Set(
+    Object.entries(meta).filter(([,m])=>aktGemeinden.has(m.gemeinde)).map(([k])=>k)
+  );
+  const orteInGem=new Set();
+  allT.forEach(t=>{
+    const o=(t.ortschaft||"").trim();
+    if(o&&vereinsInGem.has(t.verein))orteInGem.add(o);
+  });
+  chips.forEach(c=>c.style.display=orteInGem.has(c.dataset.o)?"":"none");
 }
 
 /* ── Badges & Reset-Button ── */
@@ -631,10 +713,12 @@ function updateAllBadges(){
   document.getElementById("zeit-badge").textContent=ZEIT_LBL[zeitraum]||zeitraum;
   const lkBadge=document.getElementById("lk-badge");
   if(lkBadge)lkBadge.textContent=aktLandkreis||"Alle";
+  const gemBadge=document.getElementById("gem-badge");
+  if(gemBadge)gemBadge.textContent=aktGemeinden.size===0?"Alle":aktGemeinden.size===1?[...aktGemeinden][0].replace(/^(?:Gemeinde|Markt)\s+/,""):aktGemeinden.size+" Gemeinden";
   document.getElementById("ort-badge").textContent=aktOrte.size===0?"Alle":aktOrte.size===1?[...aktOrte][0]:aktOrte.size+" Orte";
   const tot=Object.keys(labels).length,act=aktVereine.size;
   document.getElementById("ver-badge").textContent=act===tot?"Alle":act+"/"+tot;
-  const active=zeitraum!=="zukunft"||aktOrte.size>0||act!==tot||aktLandkreis!==null||searchChips.length>0||srchText.length>0||activeFavs.size>0||aktRubrikSet.size>0;
+  const active=zeitraum!=="zukunft"||aktOrte.size>0||aktGemeinden.size>0||act!==tot||aktLandkreis!==null||searchChips.length>0||srchText.length>0||activeFavs.size>0||aktRubrikSet.size>0;
   document.getElementById("reset-btn").style.display=active?"":"none";
 }
 
@@ -643,6 +727,7 @@ function resetAll(){
   zeitraum="zukunft";
   aktOrte=new Set();
   aktLandkreis=null;
+  aktGemeinden=new Set();
   aktVereine=new Set(Object.keys(labels));
   searchChips=[];
   activeFavs=new Set();
@@ -662,7 +747,10 @@ function resetAll(){
   renderFavBar();
   document.querySelectorAll("[data-z]").forEach(c=>c.classList.toggle("on",c.dataset.z==="zukunft"));
   document.querySelectorAll("[data-o]").forEach(c=>c.classList.toggle("on",c.dataset.o==="alle"));
+  document.querySelectorAll("[data-gem]").forEach(c=>c.classList.toggle("on",c.dataset.gem==="alle"));
   document.querySelectorAll("[data-lk]").forEach(c=>c.classList.toggle("on",c.dataset.lk==="alle"));
+  filterGemeindeChipsForLandkreis();
+  filterOrtChipsForGemeinde();
   filterVereinListForOrt();
   filterOrtChipsForLandkreis();
   updateChecks();
@@ -722,15 +810,22 @@ function buildOrtFilter(){
 
 function filterVereinListForOrt(){
   const lbls=document.querySelectorAll("#v-list .v-check");
-  if(!aktOrte.size){lbls.forEach(l=>l.style.display="");return;}
+  const gemFilter=aktGemeinden.size>0;
+  if(!aktOrte.size&&!gemFilter){lbls.forEach(l=>l.style.display="");return;}
   const vereinsInOrte=new Set();
-  allT.forEach(t=>{
-    const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
-    if(o&&aktOrte.has(o))vereinsInOrte.add(t.verein);
-  });
+  if(aktOrte.size){
+    allT.forEach(t=>{
+      const o=(t.ortschaft||"").trim()||_extractOrtschaft(t.ort)||"";
+      if(o&&aktOrte.has(o))vereinsInOrte.add(t.verein);
+    });
+  }
   lbls.forEach(lbl=>{
     const cb=lbl.querySelector("[data-vk]");
-    if(cb)lbl.style.display=vereinsInOrte.has(cb.dataset.vk)?"":"none";
+    if(cb){
+      const inOrt=!aktOrte.size||vereinsInOrte.has(cb.dataset.vk);
+      const inGem=!gemFilter||(meta[cb.dataset.vk]&&aktGemeinden.has(meta[cb.dataset.vk].gemeinde));
+      lbl.style.display=(inOrt&&inGem)?"":"none";
+    }
   });
 }
 
@@ -1059,6 +1154,10 @@ function render(){
     if(aktLandkreis!==null){
       const m=meta[t.verein];
       if(!m||m.landkreis!==aktLandkreis)return false;
+    }
+    if(aktGemeinden.size>0&&!isFavActive){
+      const m=meta[t.verein];
+      if(!m||!aktGemeinden.has(m.gemeinde))return false;
     }
     if(aktOrte.size>0){
       const tOrt=(t.ortschaft&&t.ortschaft.trim())
