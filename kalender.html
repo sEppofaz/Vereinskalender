@@ -784,9 +784,8 @@ function buildOrtFilter(){
   const section=document.getElementById("ort-section");
   const container=document.getElementById("ort-chips");
 
-  // Ortschaften aus Vereinsheimatorten (allOrteAll-Keys + explizite meta.heimatort)
+  // Nur explizit gesetzte meta.heimatort-Werte als Chips (keine Auto-Ableitungen aus Labels)
   const ortSet=new Set();
-  Object.keys(allOrteAll).forEach(o=>{if(!ortBlacklist.has(o))ortSet.add(o);});
   Object.values(meta).forEach(m=>{if(m.heimatort&&!ortBlacklist.has(m.heimatort))ortSet.add(m.heimatort);});
 
   const orte=[...ortSet].sort((a,b)=>a.localeCompare(b,"de"));
@@ -1102,7 +1101,7 @@ function onSearchInput(val){
       srchResults.push({type:"verein",key:k,label:l,icon:"&#127974;"});
   });
 
-  Object.keys(allOrteAll).sort().forEach(ort=>{
+  [...new Set(Object.values(meta).map(m=>m.heimatort).filter(h=>h&&!ortBlacklist.has(h)))].sort().forEach(ort=>{
     if(ort.toLowerCase().includes(q)&&!searchChips.find(c=>c.type==="ort"&&c.key===ort))
       srchResults.push({type:"ort",key:ort,label:ort,icon:"&#127968;"});
   });
