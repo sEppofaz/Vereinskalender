@@ -109,6 +109,37 @@ def service_worker():
     return "", 404
 
 
+@kalender_bp.route("/manifest-admin.json")
+def manifest_admin_json():
+    return json.dumps({
+        "name":             "VKO Admin",
+        "short_name":       "VKO Admin",
+        "start_url":        "/#admin",
+        "display":          "standalone",
+        "background_color": "#1c1c1e",
+        "theme_color":      "#6D28D9",
+        "icons": [
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }), 200, {"Content-Type": "application/manifest+json"}
+
+
+@kalender_bp.route("/admin")
+def admin_page():
+    if VKO_MAINTENANCE_FILE.exists():
+        return _MAINTENANCE_HTML, 503, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+    try:
+        html = KALENDER_HTML_FILE.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        html = "<h1>kalender.html nicht gefunden</h1>"
+    html = html.replace(
+        '<link rel="manifest" href="/manifest.json">',
+        '<link rel="manifest" href="/manifest-admin.json">'
+    )
+    return html, 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
 @kalender_bp.route("/kalender")
 def kalender_page():
     if VKO_MAINTENANCE_FILE.exists():
