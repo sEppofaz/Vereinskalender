@@ -16,6 +16,7 @@ from shared.kalender_core import (
     ICON_192_FILE,
     ICON_512_FILE,
     KALENDER_HTML_FILE,
+    SW_FILE,
     MEDIA_TYPES,
     VEREINSTERMINE_FILE,
     _HEIC_SUPPORTED,
@@ -94,6 +95,17 @@ def icon_512():
 def apple_touch_icon():
     if ICON_192_FILE.exists():
         return ICON_192_FILE.read_bytes(), 200, {"Content-Type": "image/png"}
+    return "", 404
+
+
+@kalender_bp.route("/sw.js")
+def service_worker():
+    if SW_FILE.exists():
+        return SW_FILE.read_text(encoding="utf-8"), 200, {
+            "Content-Type": "application/javascript",
+            "Cache-Control": "no-cache, no-store",
+            "Service-Worker-Allowed": "/",
+        }
     return "", 404
 
 

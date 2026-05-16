@@ -2623,6 +2623,7 @@ if(!localStorage.getItem("vk_welcome_seen")){
   document.getElementById("welcome-banner").style.display="block";
 }
 load();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 </script>
 </body>
 </html>

@@ -27,6 +27,7 @@ GOTTESDIENSTE_FILE  = Path("/opt/rename-webhook/gottesdienste.json")
 KALENDER_HTML_FILE  = Path("/opt/rename-webhook/kalender.html")
 ICON_192_FILE       = Path("/opt/rename-webhook/icon-192.png")
 ICON_512_FILE       = Path("/opt/rename-webhook/icon-512.png")
+SW_FILE             = Path("/opt/rename-webhook/sw.js")
 
 MEDIA_TYPES = {
     ".pdf":  "application/pdf",
