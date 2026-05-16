@@ -5,6 +5,7 @@ import threading
 import traceback
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -30,7 +31,7 @@ telegram_bp = Blueprint("telegram", __name__)
 _DROPBOX_INVOICE_REFRESH_TOKEN = os.environ.get("DROPBOX_INVOICE_REFRESH_TOKEN", "")
 _DROPBOX_INVOICE_APP_KEY       = os.environ.get("DROPBOX_INVOICE_APP_KEY", "")
 _DROPBOX_INVOICE_APP_SECRET    = os.environ.get("DROPBOX_INVOICE_APP_SECRET", "")
-_TODOS_FILE_PATH               = "/Apps/Claude/PKA/Todos.md"
+_TODOS_FILE_PATH               = "/Apps/Claude/PKA/Todos.json"
 _GOOGLE_MAPS_API_KEY           = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 _VERKEHR_ORIGIN                = "Hölskofen, Pfeffenhausen, Bayern, Deutschland"
 
@@ -95,18 +96,25 @@ def _get_pka_dropbox_client() -> dropbox.Dropbox:
     )
 
 
-def _save_todo(text: str) -> None:
-    dbx       = _get_pka_dropbox_client()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    new_line  = f"- [ ] {timestamp} – {text}\n"
+def _save_todo(text: str, kategorie: str = "pka") -> None:
+    dbx  = _get_pka_dropbox_client()
+    datum = datetime.now().strftime("%Y-%m-%d")
     try:
-        md, res = dbx.files_download(_TODOS_FILE_PATH)
-        existing = res.content.decode("utf-8")
+        _, res = dbx.files_download(_TODOS_FILE_PATH)
+        data = json.loads(res.content.decode("utf-8"))
     except dropbox.exceptions.ApiError:
-        existing = "# Todos\n\n"
-    updated = existing + new_line
+        data = {"v": 1, "todos": []}
+    data["todos"].append({
+        "id": str(uuid.uuid4()),
+        "datum": datum,
+        "aufgabe": text,
+        "prio": "niedrig",
+        "kategorie": kategorie,
+        "erledigt": False,
+        "erledigt_am": None,
+    })
     dbx.files_upload(
-        updated.encode("utf-8"),
+        json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"),
         _TODOS_FILE_PATH,
         mode=dropbox.files.WriteMode.overwrite,
     )
@@ -464,14 +472,21 @@ def telegram_webhook():
         threading.Thread(target=lambda: subprocess.run(["sudo", "reboot"], timeout=30), daemon=True).start()
 
     elif text and not text.startswith("/"):
-        log(f"📝  Todo von Chat {chat_id}: {text[:60]}")
-        def _do_todo(t=text, cid=chat_id):
+        # Kategorie per Prefix: #privat oder #arbeit, Default = pka
+        kategorie, todo_text = "pka", text
+        if text.startswith("#privat "):
+            kategorie, todo_text = "privat", text[8:].strip()
+        elif text.startswith("#arbeit "):
+            kategorie, todo_text = "arbeit", text[8:].strip()
+        kat_emoji = {"pka": "💻", "privat": "🏠", "arbeit": "💼"}.get(kategorie, "📝")
+        log(f"📝  Todo ({kategorie}) von Chat {chat_id}: {todo_text[:60]}")
+        def _do_todo(t=todo_text, cid=chat_id, k=kategorie, e=kat_emoji):
             try:
-                _save_todo(t)
-                send_telegram(cid, f"✅ Todo gespeichert:\n{t}")
-            except Exception as e:
-                log(f"❌  Todo speichern fehlgeschlagen: {e}")
-                send_telegram(cid, f"❌ Todo speichern fehlgeschlagen: {e}")
+                _save_todo(t, k)
+                send_telegram(cid, f"✅ Todo gespeichert ({e} {k.upper()}):\n{t}")
+            except Exception as ex:
+                log(f"❌  Todo speichern fehlgeschlagen: {ex}")
+                send_telegram(cid, f"❌ Todo speichern fehlgeschlagen: {ex}")
         threading.Thread(target=_do_todo, daemon=True).start()
 
     # ── Inline-Keyboard Callbacks (Kalender-Input-Bestätigung) ────────────────
