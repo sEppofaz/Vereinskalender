@@ -1049,10 +1049,20 @@ function toggleFavGemeinde(g){
 }
 
 function openFavIcalFeed(){
-  const favVereine=[...new Set(favorites.filter(f=>f.type==="verein").map(f=>f.key))];
   const base="webcal://vereinskalender.online/api/ical/feed";
-  if(favVereine.length===0){alert("Noch keine Vereine als Favoriten gespeichert.\nBitte erst Vereine mit ⭐ markieren, dann erneut tippen.");return;}
-  window.location.href=base+"?v="+encodeURIComponent(favVereine.join(","));
+  const keys=new Set();
+  favorites.forEach(f=>{
+    if(f.type==="verein"){keys.add(f.key);}
+    else if(f.type==="ortschaft"){
+      (allOrteAll[f.key]||[]).forEach(k=>keys.add(k));
+      Object.entries(meta).forEach(([k,m])=>{if(m.heimatort===f.key)keys.add(k);});
+    }
+    else if(f.type==="gemeinde"){
+      Object.entries(meta).forEach(([k,m])=>{if(m.gemeinde===f.key)keys.add(k);});
+    }
+  });
+  if(keys.size===0){alert("Noch keine Favoriten gespeichert.\nBitte erst Vereine oder Ortschaften mit ⭐ markieren.");return;}
+  window.location.href=base+"?v="+encodeURIComponent([...keys].join(","));
 }
 
 function toggleFavorite(idx,ev){
