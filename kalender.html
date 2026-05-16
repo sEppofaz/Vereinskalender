@@ -556,7 +556,14 @@ function applyStateToUI(){
 }
 
 async function load(){
-  const j=await(await fetch("/api/termine")).json();
+  let j;
+  try{
+    j=await(await fetch("/api/termine")).json();
+  }catch(e){
+    document.getElementById("ev-list").innerHTML=
+      `<div class="ev-empty"><p>&#128267;</p><small>Keine Internetverbindung &ndash; Termine k&ouml;nnen gerade nicht geladen werden.</small></div>`;
+    return;
+  }
   labels=j.labels||{};
   allT=j.termine||[];
   meta=j.meta||{};
