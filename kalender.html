@@ -497,6 +497,56 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
 </div><!-- content -->
 </div><!-- app -->
 
+<!-- Verein-Edit-Drawer -->
+<div id="ver-drawer-backdrop" onclick="closeVereinDrawer()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300"></div>
+<div id="ver-drawer"
+     style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:82vh;overflow-y:auto;
+            background:var(--card);border-radius:16px 16px 0 0;z-index:301;
+            padding-bottom:env(safe-area-inset-bottom,0px)">
+  <div style="display:flex;align-items:center;justify-content:space-between;
+              padding:15px 16px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--card)">
+    <div style="font-weight:700;font-size:16px;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80%" id="ver-drawer-title"></div>
+    <button onclick="closeVereinDrawer()" style="background:none;border:none;font-size:22px;color:var(--text3);cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0">&#215;</button>
+  </div>
+  <div style="padding:14px 16px 20px;display:grid;gap:10px" id="ver-drawer-body">
+    <label style="font-size:12px;color:var(--text3);display:block">Vereinsname
+      <input id="vd-name" type="text" style="display:block;width:100%;margin-top:4px;padding:8px 11px;border:1.5px solid var(--border2);border-radius:9px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+    </label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:12px;color:var(--text3);display:block">Heimatort
+        <input id="vd-heimatort" type="text" style="display:block;width:100%;margin-top:4px;padding:8px 11px;border:1.5px solid var(--border2);border-radius:9px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+      </label>
+      <label style="font-size:12px;color:var(--text3);display:block">Gemeinde
+        <input id="vd-gemeinde" type="text" style="display:block;width:100%;margin-top:4px;padding:8px 11px;border:1.5px solid var(--border2);border-radius:9px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+      </label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:12px;color:var(--text3);display:block">Landkreis
+        <input id="vd-landkreis" type="text" style="display:block;width:100%;margin-top:4px;padding:8px 11px;border:1.5px solid var(--border2);border-radius:9px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box">
+      </label>
+      <label style="font-size:12px;color:var(--text3);display:block">PLZ <span style="color:var(--text3);font-weight:400">(→ füllt Geo)</span>
+        <input id="vd-plz" type="text" inputmode="numeric" maxlength="5"
+               style="display:block;width:100%;margin-top:4px;padding:8px 11px;border:1.5px solid var(--border2);border-radius:9px;font-size:14px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box;letter-spacing:2px">
+      </label>
+    </div>
+    <label style="font-size:12px;color:var(--text3);display:block">Rubrik
+      <select id="vd-rubrik" style="display:block;width:100%;margin-top:4px;padding:8px 11px;border:1.5px solid var(--border2);border-radius:9px;font-size:14px;background:var(--bg);color:var(--text);cursor:pointer;outline:none">
+        <option>Verein</option><option>Pfarrei</option><option>Kunst und Kultur</option><option>Sonstiges</option>
+      </select>
+    </label>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1.5px solid var(--border2);border-radius:9px">
+      <span style="font-size:14px;color:var(--text2)">&#128274; Selbstverwaltung</span>
+      <button id="vd-sv-btn" onclick="toggleDrawerSV()"
+              style="padding:5px 14px;border-radius:7px;border:none;font-size:13px;font-weight:600;cursor:pointer"></button>
+    </div>
+    <button onclick="saveVereinDrawer()" id="vd-save-btn"
+            style="width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px">
+      Speichern
+    </button>
+  </div>
+</div>
+
 <button class="back-top" id="back-top" onclick="document.querySelector('.content').scrollTo({top:0,behavior:'smooth'})">&#8679;</button>
 
 <script>
@@ -2000,7 +2050,7 @@ async function deleteVereinAdmin(verein_id,verein_name,verein_key){
 
 /* ── Vereine-Tab (Admin) ── */
 const RUBRIKEN_OPT=["Verein","Pfarrei","Kunst und Kultur","Sonstiges"];
-let _vereinViewMode="alpha",_lastVereinList=[];
+let _lastVereinList=[],_vereinSearch="",_vereinRubrikFilter="",_drawerKey=null,_drawerSV=false;
 
 async function loadVereine(){
   const el=document.getElementById("ver-tab-content");
@@ -2015,118 +2065,70 @@ async function loadVereine(){
   }
 }
 
+function _vereinRow(v){
+  const nT=v.nTermine||0;
+  const sub=[v.heimatort,v.gemeinde,v.rubrik].filter(Boolean).join(" · ");
+  return `<div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:.5px solid var(--border);cursor:pointer"
+               onclick="openVereinDrawer('${v.key}')">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(v.name)}</div>
+      <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(sub)||"&nbsp;"}</div>
+    </div>
+    <span style="font-size:11px;color:var(--text3);flex-shrink:0">${nT}T</span>
+    <span style="font-size:13px;flex-shrink:0;opacity:${v.selbstverwaltung?1:0.18}" title="${v.selbstverwaltung?'Selbstverwaltung aktiv':''}">&#128274;</span>
+    <button class="ver-del-btn" onclick="event.stopPropagation();deleteVerein('${v.key.replace(/'/g,"\\'")}','${v.name.replace(/'/g,"\\'")}',${nT})">&#128465;</button>
+  </div>`;
+}
+
 function renderVereine(list){
   const el=document.getElementById("ver-tab-content");
   if(!list||!list.length){el.innerHTML='<div style="color:var(--text3);padding:12px">Keine Vereine</div>';return;}
-
-  // Alphabetisch sortiert (API liefert bereits sortiert, aber sicher ist sicher)
   list.sort((a,b)=>a.name.localeCompare(b.name,"de"));
 
-  // Buchstaben ermitteln
-  const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-  const used=new Set(list.map(v=>v.name[0].toUpperCase()));
+  const srch=_vereinSearch.toLowerCase();
+  const filtered=list.filter(v=>
+    (!srch||v.name.toLowerCase().includes(srch))&&
+    (!_vereinRubrikFilter||v.rubrik===_vereinRubrikFilter)
+  );
+  const searchActive=!!srch||!!_vereinRubrikFilter;
 
+  const rubrikOpts=["","Verein","Pfarrei","Kunst und Kultur","Sonstiges"].map(r=>
+    `<option value="${r}"${_vereinRubrikFilter===r?" selected":""}>${r||"Alle Rubriken"}</option>`).join("");
+  const toolbar=`<div style="display:flex;gap:8px;margin-bottom:10px">
+    <input type="search" value="${escHtml(_vereinSearch)}" placeholder="Verein suchen…"
+      oninput="_vereinSearch=this.value;renderVereine(_lastVereinList)"
+      style="flex:1;padding:8px 11px;border:1.5px solid var(--border2);border-radius:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+    <select onchange="_vereinRubrikFilter=this.value;renderVereine(_lastVereinList)"
+      style="padding:8px 8px;border:1.5px solid var(--border2);border-radius:10px;font-size:13px;background:var(--bg);color:var(--text);cursor:pointer;outline:none">${rubrikOpts}</select>
+  </div>`;
+
+  const info=`<div style="font-size:12px;color:var(--text3);padding:0 2px 6px">${filtered.length} Vereine</div>`;
+
+  if(searchActive){
+    const rows=filtered.map(v=>_vereinRow(v)).join("");
+    el.innerHTML=toolbar+info+`<div class="filter-card" style="padding:0">${rows||'<div style="padding:14px;color:var(--text3)">Keine Treffer.</div>'}</div>`;
+    return;
+  }
+
+  const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const used=new Set(filtered.map(v=>v.name[0]?.toUpperCase()));
   const alphaBar=`<div class="alpha-bar">${alpha.map(l=>
     `<button class="alpha-btn${used.has(l)?"":" inactive"}" onclick="${used.has(l)?`scrollToVereinLetter('${l}')`:""}">${l}</button>`
   ).join("")}</div>`;
 
-  // Gruppieren nach Anfangsbuchstabe
   const grouped={};
-  list.forEach(v=>{
-    const l=v.name[0].toUpperCase();
-    if(!grouped[l])grouped[l]=[];
-    grouped[l].push(v);
-  });
-
+  filtered.forEach(v=>{const l=v.name[0]?.toUpperCase()||"#";if(!grouped[l])grouped[l]=[];grouped[l].push(v);});
   const rows=Object.keys(grouped).sort().map(l=>{
-    const items=grouped[l].map(v=>{
-      const opts=RUBRIKEN_OPT.map(r=>`<option value="${r}"${v.rubrik===r?" selected":""}>${r}</option>`).join("");
-      const nT=v.nTermine||0;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:.5px solid var(--border)">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.name}</div>
-          <div style="font-size:11px;color:var(--text3)">${nT} Termin${nT!==1?"e":""}</div>
-        </div>
-        <select data-vkey="${v.key}" onchange="updateVereinRubrik('${v.key}',this.value)"
-          style="padding:5px 6px;border:1.5px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;max-width:120px">
-          ${opts}
-        </select>
-        <button onclick="toggleSelbstverwaltung('${v.key.replace(/'/g,"\\'")}','${v.name.replace(/'/g,"\\'")}',${!!v.selbstverwaltung})"
-          title="${v.selbstverwaltung?'Selbstverwaltung aktiv – deaktivieren':'Selbstverwaltung inaktiv – aktivieren'}"
-          style="background:none;border:none;font-size:15px;cursor:pointer;padding:0 2px;opacity:${v.selbstverwaltung?1:0.22};flex-shrink:0">🔒</button>
-        <button class="ver-del-btn" onclick="deleteVerein('${v.key.replace(/'/g,"\\'")}','${v.name.replace(/'/g,"\\'")}',${nT})">&#128465;</button>
-      </div>`;
-    }).join("");
+    const items=grouped[l].map(v=>_vereinRow(v)).join("");
     return `<div class="ver-section-hdr" id="ver-letter-${l}">${l}</div><div class="filter-card" style="padding:0;margin-bottom:6px">${items}</div>`;
   }).join("");
 
-  const viewToggle=`<div style="display:flex;gap:6px;margin-bottom:10px">
-    <button onclick="_vereinViewMode='alpha';renderVereine(_lastVereinList)"
-      style="padding:5px 14px;border:1.5px solid var(--border2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:${_vereinViewMode==='alpha'?'var(--accent)':'var(--bg)'};color:${_vereinViewMode==='alpha'?'#fff':'var(--text2)'}">A–Z</button>
-    <button onclick="_vereinViewMode='ort';renderVereineByOrt(_lastVereinList)"
-      style="padding:5px 14px;border:1.5px solid var(--border2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:${_vereinViewMode==='ort'?'var(--accent)':'var(--bg)'};color:${_vereinViewMode==='ort'?'#fff':'var(--text2)'}">Ortschaft</button>
-  </div>`;
-  el.innerHTML=`
-    <div style="font-size:12px;color:var(--text3);padding:0 2px 10px">${list.length} Vereine – Rubrik festlegen, Löschen entfernt Verein + alle Termine.</div>
-    ${viewToggle}${alphaBar}
-    ${rows}`;
+  el.innerHTML=toolbar+info+alphaBar+rows;
 }
 
 function scrollToVereinLetter(l){
   const el=document.getElementById("ver-letter-"+l);
   if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
-}
-
-function renderVereineByOrt(list){
-  _vereinViewMode="ort";
-  const el=document.getElementById("ver-tab-content");
-  if(!list||!list.length)return;
-  list=list.slice().sort((a,b)=>a.name.localeCompare(b.name,"de"));
-
-  const grouped={};
-  list.forEach(v=>{const ort=v.heimatort||"–";if(!grouped[ort])grouped[ort]=[];grouped[ort].push(v);});
-
-  const viewToggle=`<div style="display:flex;gap:6px;margin-bottom:10px">
-    <button onclick="_vereinViewMode='alpha';renderVereine(_lastVereinList)"
-      style="padding:5px 14px;border:1.5px solid var(--border2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--text2)">A–Z</button>
-    <button style="padding:5px 14px;border:1.5px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">Ortschaft</button>
-  </div>`;
-
-  const inp=(key,field,val,ph)=>`<input type="text" value="${escHtml(val||'')}" placeholder="${ph}"
-    onchange="saveVereinMeta('${key.replace(/'/g,"\\'")}','${field}',this.value,this)"
-    style="width:100px;padding:4px 7px;border:1.5px solid var(--border2);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);flex-shrink:0">`;
-
-  const rows=Object.keys(grouped).sort((a,b)=>a.localeCompare(b,"de")).map(ort=>{
-    const hdr=`<div style="font-size:11px;font-weight:700;color:var(--accent);padding:8px 14px 3px;margin-top:4px">📍 ${escHtml(ort)}</div>`;
-    const items=grouped[ort].map(v=>{
-      const nT=v.nTermine||0;
-      const dot=v.heimatort_explizit?"#34c759":"var(--text3)";
-      const svBtn=`<button onclick="toggleSelbstverwaltung('${v.key.replace(/'/g,"\\'")}','${escHtml(v.name)}',${!!v.selbstverwaltung})"
-        title="${v.selbstverwaltung?'Selbstverwaltung aktiv':'Selbstverwaltung inaktiv'}"
-        style="background:none;border:none;font-size:13px;cursor:pointer;padding:0;opacity:${v.selbstverwaltung?1:0.22};flex-shrink:0">🔒</button>`;
-      return `<div style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-bottom:.5px solid var(--border)">
-        <span title="${v.heimatort_explizit?'explizit':'aus Label'}" style="width:6px;height:6px;border-radius:50%;background:${dot};flex-shrink:0"></span>
-        <div style="flex:1;min-width:0;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(v.name)}">${escHtml(v.name)}</div>
-        <span style="font-size:11px;color:var(--text3);flex-shrink:0;min-width:20px;text-align:right">${nT}T</span>
-        ${svBtn}
-        ${inp(v.key,'heimatort',v.heimatort,'Ortschaft')}
-        ${inp(v.key,'gemeinde',v.gemeinde,'Gemeinde')}
-        ${inp(v.key,'landkreis',v.landkreis,'Landkreis')}
-      </div>`;
-    }).join("");
-    return hdr+`<div class="filter-card" style="padding:0;margin-bottom:4px">${items}</div>`;
-  }).join("");
-
-  const hdrs=`<div style="display:flex;gap:6px;padding:0 14px;margin-bottom:2px;font-size:10px;font-weight:600;color:var(--text3)">
-    <div style="flex:1"></div><div style="min-width:20px"></div>
-    <div style="width:100px">Ortschaft</div>
-    <div style="width:100px">Gemeinde</div>
-    <div style="width:100px">Landkreis</div>
-  </div>`;
-
-  el.innerHTML=`<div style="font-size:12px;color:var(--text3);padding:0 2px 6px">
-    ${list.length} Vereine · <span style="color:#34c759">●</span> explizit · <span style="color:var(--text3)">●</span> aus Label
-  </div>${viewToggle}${hdrs}${rows}`;
 }
 
 async function saveVereinMeta(key,field,value,inputEl){
@@ -2166,8 +2168,7 @@ async function toggleSelbstverwaltung(key,name,currentValue){
       if(item)item.selbstverwaltung=neuerWert;
       if(!meta[key])meta[key]={};
       meta[key].selbstverwaltung=neuerWert;
-      if(_vereinViewMode==="ort")renderVereineByOrt(_lastVereinList);
-      else renderVereine(_lastVereinList);
+      renderVereine(_lastVereinList);
     }else alert("❌ "+(d.error||"Fehler"));
   }catch(e){alert("❌ Netzwerkfehler");}
 }
@@ -2194,17 +2195,86 @@ async function deleteVerein(key,name,nTermine){
   }catch(e){alert("Netzwerkfehler: "+e);}
 }
 
-async function updateVereinRubrik(key,rubrik){
+/* ── Verein-Drawer ── */
+function openVereinDrawer(key){
+  const v=_lastVereinList.find(x=>x.key===key);
+  if(!v)return;
+  _drawerKey=key;
+  document.getElementById("ver-drawer-title").textContent=v.name;
+  document.getElementById("vd-name").value=v.name||"";
+  document.getElementById("vd-heimatort").value=v.heimatort||"";
+  document.getElementById("vd-gemeinde").value=v.gemeinde||"";
+  document.getElementById("vd-landkreis").value=v.landkreis||"";
+  document.getElementById("vd-plz").value=v.plz||"";
+  document.getElementById("vd-rubrik").value=v.rubrik||"Verein";
+  _updateDrawerSVBtn(!!v.selbstverwaltung);
+  document.getElementById("ver-drawer-backdrop").style.display="";
+  document.getElementById("ver-drawer").style.display="";
+}
+
+function closeVereinDrawer(){
+  _drawerKey=null;
+  document.getElementById("ver-drawer-backdrop").style.display="none";
+  document.getElementById("ver-drawer").style.display="none";
+}
+
+function _updateDrawerSVBtn(val){
+  _drawerSV=val;
+  const btn=document.getElementById("vd-sv-btn");
+  if(val){btn.textContent="🔒 aktiv";btn.style.background="var(--accent)";btn.style.color="#fff";}
+  else{btn.textContent="🔓 inaktiv";btn.style.background="var(--border)";btn.style.color="var(--text2)";}
+}
+
+async function toggleDrawerSV(){
+  const key=_drawerKey;if(!key)return;
+  const v=_lastVereinList.find(x=>x.key===key);if(!v)return;
+  const neu=!_drawerSV;
+  const msg=neu
+    ?`🔒 Selbstverwaltung für "${v.name}" aktivieren?\nTermine werden bei Importen nicht überschrieben.`
+    :`🔓 Selbstverwaltung für "${v.name}" deaktivieren?`;
+  if(!confirm(msg))return;
   const token=sessionStorage.getItem("ut")||"";
-  await fetch("/api/vereine",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","X-Upload-Token":token},
-    body:JSON.stringify({key,rubrik}),
-  });
-  // rubriken-Map live aktualisieren → Rubrik-Bar und Filterung sofort korrekt
-  rubriken[key]=rubrik;
-  renderRubrikBar();
-  render();
+  const r=await fetch("/api/vereine",{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({key,selbstverwaltung:neu})});
+  const d=await r.json();
+  if(d.ok){v.selbstverwaltung=neu;if(!meta[key])meta[key]={};meta[key].selbstverwaltung=neu;_updateDrawerSVBtn(neu);renderVereine(_lastVereinList);}
+  else alert("❌ "+(d.error||"Fehler"));
+}
+
+async function saveVereinDrawer(){
+  const key=_drawerKey;if(!key)return;
+  const token=sessionStorage.getItem("ut")||"";
+  const btn=document.getElementById("vd-save-btn");
+  btn.disabled=true;btn.textContent="Speichern…";
+  const body={
+    key,
+    name:     document.getElementById("vd-name").value.trim(),
+    heimatort:document.getElementById("vd-heimatort").value.trim(),
+    gemeinde: document.getElementById("vd-gemeinde").value.trim(),
+    landkreis:document.getElementById("vd-landkreis").value.trim(),
+    plz:      document.getElementById("vd-plz").value.trim(),
+    rubrik:   document.getElementById("vd-rubrik").value,
+  };
+  try{
+    const r=await fetch("/api/vereine",{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.ok){
+      const item=_lastVereinList.find(v=>v.key===key);
+      if(item){
+        item.name=d.name||body.name;
+        item.heimatort=d.heimatort||body.heimatort;
+        item.heimatort_explizit=!!d.heimatort_explizit;
+        item.gemeinde=d.gemeinde||body.gemeinde;
+        item.landkreis=d.landkreis||body.landkreis;
+        item.rubrik=d.rubrik||body.rubrik;
+        item.plz=body.plz;
+      }
+      if(body.rubrik){rubriken[key]=body.rubrik;renderRubrikBar();render();}
+      if(body.name&&labels[key]&&body.name!==labels[key]){labels[key]=body.name;}
+      closeVereinDrawer();
+      renderVereine(_lastVereinList);
+    }else alert("❌ "+(d.error||"Fehler"));
+  }catch(e){alert("❌ Netzwerkfehler: "+e);}
+  finally{btn.disabled=false;btn.textContent="Speichern";}
 }
 
 /* ── Importe-Tab ── */
