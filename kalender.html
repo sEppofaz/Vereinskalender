@@ -2048,8 +2048,8 @@ async function loadVereine(){
   }
 }
 
-const _VER_GRID="36px 1fr 90px 130px 140px 85px 20px";
-const _VER_HDR=`<div style="display:grid;grid-template-columns:${_VER_GRID};gap:0 8px;padding:5px 14px;background:var(--bg2);border-bottom:1.5px solid var(--border);min-width:580px">
+const _VER_GRID="28px 1fr 75px 90px 68px 68px 16px";
+const _VER_HDR=`<div style="display:grid;grid-template-columns:${_VER_GRID};gap:0 8px;padding:5px 14px;background:var(--bg2);border-bottom:1.5px solid var(--border);min-width:480px">
   <span style="font-size:10px;font-weight:600;color:var(--text3);text-align:right">T</span>
   <span style="font-size:10px;font-weight:600;color:var(--text3)">Verein</span>
   <span style="font-size:10px;font-weight:600;color:var(--text3)">Heimatort</span>
@@ -2058,19 +2058,21 @@ const _VER_HDR=`<div style="display:grid;grid-template-columns:${_VER_GRID};gap:
   <span style="font-size:10px;font-weight:600;color:var(--text3)">Rubrik</span>
   <span></span>
 </div>`;
+const _stripGem=s=>s?s.replace(/^(Gemeinde|Markt|Stadt)\s+/i,'').trim():'';
+const _stripLk=s=>s?s.replace(/^Landkreis\s+/i,'').trim():'';
 
 function _vereinRow(v){
   const nT=v.nTermine||0;
   const g=s=>s?escHtml(s):`<span style="opacity:.3">–</span>`;
-  return `<div style="display:grid;grid-template-columns:${_VER_GRID};align-items:center;gap:0 8px;padding:8px 14px;border-bottom:.5px solid var(--border);cursor:pointer;min-width:580px"
+  return `<div style="display:grid;grid-template-columns:${_VER_GRID};align-items:center;gap:0 8px;padding:8px 14px;border-bottom:.5px solid var(--border);cursor:pointer;min-width:480px"
                onclick="openVereinDrawer('${v.key}')">
     <span style="font-size:12px;font-weight:600;color:var(--tab);text-align:right">${nT}</span>
     <span style="font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(v.name)}</span>
     <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g(v.heimatort)}</span>
-    <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g(v.gemeinde)}</span>
-    <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g(v.landkreis)}</span>
+    <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g(_stripGem(v.gemeinde))}</span>
+    <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g(_stripLk(v.landkreis))}</span>
     <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g(v.rubrik)}</span>
-    <span style="font-size:13px;opacity:${v.selbstverwaltung?1:0.18}">&#128274;</span>
+    <span style="font-size:12px;opacity:${v.selbstverwaltung?1:0.18}">&#128274;</span>
   </div>`;
 }
 
@@ -2114,7 +2116,7 @@ function renderVereine(list){
   filtered.forEach(v=>{const l=v.name[0]?.toUpperCase()||"#";if(!grouped[l])grouped[l]=[];grouped[l].push(v);});
   const rows=Object.keys(grouped).sort().map(l=>{
     const items=grouped[l].map(v=>_vereinRow(v)).join("");
-    return `<div class="ver-section-hdr" id="ver-letter-${l}" style="min-width:580px;padding:8px 14px 4px">${l}</div>${items}`;
+    return `<div class="ver-section-hdr" id="ver-letter-${l}" style="min-width:480px;padding:8px 14px 4px">${l}</div>${items}`;
   }).join("");
 
   el.innerHTML=toolbar+info+alphaBar+`<div class="filter-card" style="padding:0;overflow-x:auto">${_VER_HDR}${rows}</div>`;
