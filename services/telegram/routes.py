@@ -552,7 +552,7 @@ def telegram_webhook():
                 threading.Thread(target=_do_heimat_import, daemon=True).start()
             else:
                 from pathlib import Path as _Path
-                _Path(f"/tmp/heimat_pending_{uid}.json").unlink(missing_ok=True)
+                _Path(f"/opt/rename-webhook/imports/heimat_pending_{uid}.json").unlink(missing_ok=True)
                 answer_telegram_callback(cb_id, "🗑 Verworfen")
                 send_telegram(TELEGRAM_CHAT_ID, "🗑 heimat-info Import verworfen.")
 

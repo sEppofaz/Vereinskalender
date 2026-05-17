@@ -1177,3 +1177,214 @@ def api_ical_feed():
         mimetype="text/calendar; charset=utf-8",
         headers={"Content-Disposition": "inline; filename=\"vereinskalender.ics\""},
     )
+
+
+# ── Admin: heimat-info Import-Management ─────────────────────────────────────
+
+HEIMAT_PENDING_DIR = Path("/opt/rename-webhook/imports")
+
+
+def _load_pending_meta(f: Path) -> dict | None:
+    """Lädt Zusammenfassung einer Pending-Datei (ohne vollständige Events)."""
+    try:
+        data   = json.loads(f.read_text())
+        events = data.get("events", [])
+        vereine: dict = {}
+        for e in events:
+            k = e["_verein_key"]
+            if k not in vereine:
+                vereine[k] = {
+                    "key":      k,
+                    "label":    e.get("_label", k),
+                    "gemeinde": e.get("_gemeinde", ""),
+                    "neu":      0,
+                    "total":    0,
+                }
+            vereine[k]["total"] += 1
+            if e.get("_neu"):
+                vereine[k]["neu"] += 1
+        return {
+            "uid":        data["uid"],
+            "quelle":     data.get("quelle", "heimat-info.de"),
+            "erzeugt":    data.get("erzeugt", ""),
+            "gesamt":     len(events),
+            "neu":        sum(1 for e in events if e.get("_neu")),
+            "duplikate":  sum(1 for e in events if not e.get("_neu") and not e.get("_sv")),
+            "sv":         sum(1 for e in events if e.get("_sv")),
+            "vereine":    sorted(vereine.values(), key=lambda x: x["label"].lower()),
+        }
+    except Exception:
+        return None
+
+
+@kalender_bp.route("/api/admin/importe", methods=["GET"])
+def api_admin_importe():
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+    HEIMAT_PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    result = []
+    for f in sorted(HEIMAT_PENDING_DIR.glob("heimat_pending_*.json"),
+                    key=lambda x: x.stat().st_mtime, reverse=True):
+        meta = _load_pending_meta(f)
+        if meta:
+            result.append(meta)
+    return json.dumps(result, ensure_ascii=False), 200, {
+        "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
+
+
+@kalender_bp.route("/api/admin/importe/<uid>", methods=["GET"])
+def api_admin_importe_detail(uid):
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+    pf = HEIMAT_PENDING_DIR / f"heimat_pending_{uid}.json"
+    if not pf.exists():
+        return json.dumps({"error": "Import nicht gefunden"}), 404, {"Content-Type": "application/json"}
+    try:
+        data   = json.loads(pf.read_text())
+        events = data.get("events", [])
+        vereine: dict = {}
+        for e in events:
+            k = e["_verein_key"]
+            if k not in vereine:
+                vereine[k] = {
+                    "key":      k,
+                    "label":    e.get("_label", k),
+                    "gemeinde": e.get("_gemeinde", ""),
+                    "termine":  [],
+                    "neu":      0,
+                }
+            if e.get("_neu"):
+                vereine[k]["termine"].append({
+                    "datum":       e["datum"],
+                    "uhrzeit":     e.get("uhrzeit", ""),
+                    "bezeichnung": e["bezeichnung"],
+                    "ort":         e.get("ort", ""),
+                })
+                vereine[k]["neu"] += 1
+        return json.dumps({
+            "uid":     data["uid"],
+            "quelle":  data.get("quelle", ""),
+            "erzeugt": data.get("erzeugt", ""),
+            "vereine": list(vereine.values()),
+        }, ensure_ascii=False), 200, {
+            "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@kalender_bp.route("/api/admin/importe/<uid>/confirm", methods=["POST"])
+def api_admin_importe_confirm(uid):
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+    body        = request.get_json(silent=True) or {}
+    alle        = body.get("alle", False)
+    verein_keys = body.get("vereine") if not alle else None
+    geo         = body.get("geo", {})  # {key: {heimatort, gemeinde, landkreis}}
+
+    # Geo-Overrides vorab in _meta schreiben (Admin-Entscheidung, immer maßgeblich)
+    if geo:
+        try:
+            raw = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
+            raw.setdefault("_meta", {})
+            for vkey, felder in geo.items():
+                raw["_meta"].setdefault(vkey, {})
+                for f in ("heimatort", "gemeinde", "landkreis"):
+                    val = (felder.get(f) or "").strip()
+                    if val:
+                        raw["_meta"][vkey][f] = val
+                    else:
+                        raw["_meta"][vkey].pop(f, None)
+            from shared.kalender_store import KalenderStore
+            KalenderStore.update(lambda d: d.clear() or d.update(raw))
+        except Exception as e:
+            log(f"⚠️  Geo-Override fehlgeschlagen: {e}")
+
+    try:
+        import importlib.util as _ilu
+        spec = _ilu.spec_from_file_location("heimat_import", "/opt/rename-webhook/heimat_import.py")
+        mod  = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        result = mod.do_import(uid, verein_keys)
+        log(f"✅  Admin-Import uid={uid}: {result}")
+        return json.dumps({"ok": True, "message": result}, ensure_ascii=False), 200, {
+            "Content-Type": "application/json; charset=utf-8"}
+    except Exception as e:
+        log(f"❌  Admin-Import uid={uid}: {e}")
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@kalender_bp.route("/api/admin/importe/<uid>/reject", methods=["POST"])
+def api_admin_importe_reject(uid):
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+    body        = request.get_json(silent=True) or {}
+    alle        = body.get("alle", False)
+    verein_keys = body.get("vereine") if not alle else None
+    try:
+        import importlib.util as _ilu
+        spec = _ilu.spec_from_file_location("heimat_import", "/opt/rename-webhook/heimat_import.py")
+        mod  = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        result = mod.do_reject(uid, verein_keys)
+        return json.dumps({"ok": True, "message": result}, ensure_ascii=False), 200, {
+            "Content-Type": "application/json; charset=utf-8"}
+    except Exception as e:
+        return json.dumps({"error": str(e)}), 500, {"Content-Type": "application/json"}
+
+
+@kalender_bp.route("/api/admin/importe/trigger", methods=["POST"])
+def api_admin_importe_trigger():
+    import ipaddress as _ip
+    import socket as _socket
+    import threading
+    import urllib.parse as _up
+
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+
+    body = request.get_json(silent=True) or {}
+    url  = (body.get("url") or "").strip()
+    alle = body.get("alle", False)
+
+    if not url and not alle:
+        return json.dumps({"error": "url oder alle: true erforderlich"}), 400, {
+            "Content-Type": "application/json"}
+
+    # SSRF-Schutz bei URL-Eingabe
+    if url:
+        parsed = _up.urlparse(url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            return json.dumps({"error": "Nur HTTPS-URLs erlaubt"}), 400, {
+                "Content-Type": "application/json"}
+        try:
+            ip = _socket.gethostbyname(parsed.hostname or "")
+            addr = _ip.ip_address(ip)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                return json.dumps({"error": "Private/lokale Adressen nicht erlaubt"}), 400, {
+                    "Content-Type": "application/json"}
+        except Exception:
+            pass
+
+    def _run():
+        try:
+            import importlib.util as _ilu
+            spec = _ilu.spec_from_file_location(
+                "heimat_import", "/opt/rename-webhook/heimat_import.py")
+            mod = _ilu.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if url:
+                result = mod.fetch_and_save_pending_for_url(url)
+            else:
+                result = mod.fetch_and_save_pending()
+            log(f"✅  Admin-Trigger: {result}")
+        except Exception as e:
+            log(f"❌  Admin-Trigger fehlgeschlagen: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return json.dumps({"ok": True, "message": "Import gestartet – Tab in ca. 30 Sek. neu laden"}),\
+           202, {"Content-Type": "application/json; charset=utf-8"}

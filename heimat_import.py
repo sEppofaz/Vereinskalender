@@ -24,6 +24,7 @@ from shared.telegram import send_telegram, send_telegram_inline
 
 GEMEINDEN_FILE      = Path("/opt/rename-webhook/heimat_gemeinden.json")
 VEREINSTERMINE_FILE = Path("/opt/rename-webhook/vereinstermine.json")
+PENDING_DIR         = Path("/opt/rename-webhook/imports")
 LOG_FILE            = "/var/log/pka-heimat.log"
 API_BASE            = "https://www.heimat-info.de/embeddings/events/v1/"
 API_EXPORT          = "https://heimatinfo-api-platform.azurewebsites.net"
@@ -32,7 +33,6 @@ API_EXPORT_HEADERS  = {
     "Referer":    "https://www.heimat-info.de/",
     "User-Agent": "Mozilla/5.0",
 }
-DROPBOX_EXCEL_PATH  = "/Apps/Claude/Vereinskalender/heimat_preview.xlsx"
 
 _org_cache: dict[str, str] = {}
 
@@ -289,15 +289,23 @@ def _is_duplicate(datum: str, uhrzeit: str, bezeichnung: str,
     return False
 
 
-def do_import(uid: str) -> str:
+def do_import(uid: str, verein_keys: list | None = None) -> str:
     """Schreibt bestätigte Events in vereinstermine.json.
+    verein_keys=None: alle Events importieren.
+    verein_keys=[...]: nur diese Vereine importieren; Pending-Datei bleibt mit Rest.
     Löscht zuerst alte Gemeinde-Keys (Migration auf per-Veranstalter-Keys)."""
-    pending_file = Path(f"/tmp/heimat_pending_{uid}.json")
+    pending_file = PENDING_DIR / f"heimat_pending_{uid}.json"
     if not pending_file.exists():
-        return "⚠️ Pending-Datei nicht gefunden (Server-Neustart?)"
+        # Fallback für ältere Pending-Dateien in /tmp
+        old = Path(f"/tmp/heimat_pending_{uid}.json")
+        if old.exists():
+            pending_file = old
+        else:
+            return "⚠️ Pending-Datei nicht gefunden (Server-Neustart?)"
 
     pending  = json.loads(pending_file.read_text())
     events   = pending["events"]
+    filter_keys = set(verein_keys) if verein_keys is not None else None
     data     = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
     if "_labels" not in data:
         data["_labels"] = {}
@@ -309,6 +317,7 @@ def do_import(uid: str) -> str:
     gemeinde_map: dict = data["_ortschaften"].setdefault("gemeinde_map", {})
 
     # Alte Gemeinde-Keys entfernen (werden durch per-Veranstalter-Keys ersetzt)
+    old_keys: set = set()
     if GEMEINDEN_FILE.exists():
         gemeinden = json.loads(GEMEINDEN_FILE.read_text())
         old_keys  = {g["verein_key"] for g in gemeinden}
@@ -320,12 +329,13 @@ def do_import(uid: str) -> str:
         if geloescht:
             _log(f"🗑 Alte Gemeinde-Keys entfernt: {', '.join(geloescht)}")
 
-    # Alte Keys auch beim Duplikat-Check ausschließen (Datei noch nicht neu geschrieben)
     existing = _existing_events(exclude_keys=old_keys)
     neu = duplikat = 0
 
     for e in events:
-        if not e.get("_neu", True):  # Duplikat oder via Excel ausgeschlossen
+        if filter_keys is not None and e["_verein_key"] not in filter_keys:
+            continue
+        if not e.get("_neu", True):
             duplikat += 1
             continue
         if _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing):
@@ -336,6 +346,7 @@ def do_import(uid: str) -> str:
             data[key] = []
         data["_labels"].setdefault(key, e["_label"])
         verein_gemeinde = gemeinde_map.get(e["_gemeinde"], "")
+        # Geo-Felder nur setzen wenn noch kein Eintrag vorhanden (nie überschreiben)
         if key not in data["_meta"]:
             data["_meta"][key] = {
                 "heimatort": e["_gemeinde"],
@@ -362,41 +373,77 @@ def do_import(uid: str) -> str:
 
     VEREINSTERMINE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
     _log(f"✅ Import: {neu} neu, {duplikat} Duplikate übersprungen")
+
+    # Pending-Datei: bei Teilimport Rest behalten, sonst löschen
     try:
-        pending_file.unlink(missing_ok=True)
+        if filter_keys is not None:
+            remaining = [e for e in events if e["_verein_key"] not in filter_keys]
+            if remaining:
+                pending["events"] = remaining
+                pending_file.write_text(json.dumps(pending, ensure_ascii=False))
+            else:
+                pending_file.unlink(missing_ok=True)
+        else:
+            pending_file.unlink(missing_ok=True)
     except OSError:
         pass
     return f"✅ {neu} neue Termine importiert, {duplikat} Duplikate übersprungen"
 
 
-def cmd_import(secrets: dict) -> None:
-    token   = secrets["TOKEN"]
-    chat_id = secrets["CHAT_ID"]
+def do_reject(uid: str, verein_keys: list | None = None) -> str:
+    """Verwirft Events aus der Pending-Datei.
+    verein_keys=None: gesamten Import verwerfen.
+    verein_keys=[...]: nur diese Vereine entfernen."""
+    pending_file = PENDING_DIR / f"heimat_pending_{uid}.json"
+    if not pending_file.exists():
+        return "⚠️ Pending-Datei nicht gefunden"
+    if verein_keys is None:
+        try:
+            pending_file.unlink()
+        except OSError:
+            pass
+        return "🗑 Import verworfen"
+    pending = json.loads(pending_file.read_text())
+    filter_keys = set(verein_keys)
+    remaining = [e for e in pending["events"] if e["_verein_key"] not in filter_keys]
+    try:
+        if remaining:
+            pending["events"] = remaining
+            pending_file.write_text(json.dumps(pending, ensure_ascii=False))
+        else:
+            pending_file.unlink()
+    except OSError:
+        pass
+    return f"🗑 {len(verein_keys)} Verein(e) verworfen"
+
+
+def fetch_and_save_pending(gemeinden_filter: list | None = None) -> dict:
+    """Fetcht Events für alle (oder gefilterte) Gemeinden und speichert Pending.
+    Gibt Summary-Dict zurück: {uid, neu, duplikate, sv, fehler, gesamt}
+    Bei Fehler: {"error": "..."} ohne uid."""
+    PENDING_DIR.mkdir(parents=True, exist_ok=True)
 
     if not GEMEINDEN_FILE.exists():
-        send_telegram(token, chat_id, "⚠️ heimat_gemeinden.json nicht gefunden.\n"
-                      "Gemeinde hinzufügen: /heimat-add <url>")
-        return
+        return {"error": "heimat_gemeinden.json nicht gefunden"}
 
     gemeinden = json.loads(GEMEINDEN_FILE.read_text())
+    if gemeinden_filter:
+        gemeinden = [g for g in gemeinden if g.get("url") in gemeinden_filter
+                     or g.get("name") in gemeinden_filter]
     if not gemeinden:
-        send_telegram(token, chat_id,
-                      "ℹ️ Keine Gemeinden konfiguriert.\n/heimat-add <url> nutzen.")
-        return
+        return {"error": "Keine Gemeinden konfiguriert"}
 
-    heute     = datetime.now().strftime("%Y-%m-%d")
-    old_keys  = {g["verein_key"] for g in gemeinden}
-    # Migration: alte Gemeinde-Keys beim Duplikat-Check überspringen
-    existing  = _existing_events(exclude_keys=old_keys)
+    heute    = datetime.now().strftime("%Y-%m-%d")
+    old_keys = {g["verein_key"] for g in gemeinden}
+    existing = _existing_events(exclude_keys=old_keys)
 
-    # Selbstverwaltungs-Flags aus _meta laden
     try:
         _sv_meta = json.loads(VEREINSTERMINE_FILE.read_text()).get("_meta", {}) if VEREINSTERMINE_FILE.exists() else {}
     except Exception:
         _sv_meta = {}
 
-    alle_events = []
-    fehler      = []
+    alle_events: list = []
+    fehler: list      = []
 
     for g in gemeinden:
         _log(f"Fetche {g['name']} (c={g['c_id'][:8]}…)")
@@ -414,26 +461,50 @@ def cmd_import(secrets: dict) -> None:
             e["quelle"]      = "heimat-info.de"
             e["quelle_url"]  = g.get("url", "")
             e["_sv"]         = bool(_sv_meta.get(e["_verein_key"], {}).get("selbstverwaltung", False))
-            e["_neu"]        = False if e["_sv"] else not _is_duplicate(e["datum"], e["uhrzeit"], e["bezeichnung"], existing)
+            e["_neu"]        = False if e["_sv"] else not _is_duplicate(
+                e["datum"], e["uhrzeit"], e["bezeichnung"], existing)
         alle_events.extend(events)
         neu_count = sum(1 for e in events if e["_neu"])
         _log(f"  → {len(events)} Termine ({neu_count} neu)")
 
     if not alle_events:
-        send_telegram(token, chat_id, "🏡 heimat-info: Keine bevorstehenden Termine.")
-        return
+        return {"error": "Keine bevorstehenden Termine gefunden", "fehler": fehler}
 
     alle_events.sort(key=lambda x: (x["datum"], x.get("uhrzeit", "")))
-    neu_gesamt  = sum(1 for e in alle_events if e["_neu"])
-    sv_gesamt   = sum(1 for e in alle_events if e.get("_sv"))
-    dup_gesamt  = sum(1 for e in alle_events if not e["_neu"] and not e.get("_sv"))
-
     uid = str(uuid.uuid4())[:8]
-    Path(f"/tmp/heimat_pending_{uid}.json").write_text(
-        json.dumps({"uid": uid, "events": alle_events}, ensure_ascii=False))
+    (PENDING_DIR / f"heimat_pending_{uid}.json").write_text(json.dumps({
+        "uid":     uid,
+        "quelle":  "heimat-info.de",
+        "erzeugt": datetime.now().isoformat(timespec="seconds"),
+        "events":  alle_events,
+    }, ensure_ascii=False))
 
-    # Vorschau: nur neue Termine anzeigen, Duplikate zusammenfassen
-    neue   = [e for e in alle_events if e["_neu"]]
+    neu = sum(1 for e in alle_events if e["_neu"])
+    sv  = sum(1 for e in alle_events if e.get("_sv"))
+    dup = sum(1 for e in alle_events if not e["_neu"] and not e.get("_sv"))
+    _log(f"✅ Pending uid={uid}: {neu} neu, {dup} dup, {sv} sv")
+    return {"uid": uid, "neu": neu, "duplikate": dup, "sv": sv,
+            "fehler": fehler, "gesamt": len(alle_events)}
+
+
+def cmd_import(secrets: dict) -> None:
+    token   = secrets["TOKEN"]
+    chat_id = secrets["CHAT_ID"]
+
+    result = fetch_and_save_pending()
+    if "error" in result:
+        send_telegram(token, chat_id, f"⚠️ {result['error']}")
+        return
+
+    uid        = result["uid"]
+    neu_gesamt = result["neu"]
+    dup_gesamt = result["duplikate"]
+    sv_gesamt  = result["sv"]
+    fehler     = result.get("fehler", [])
+
+    pending_file = PENDING_DIR / f"heimat_pending_{uid}.json"
+    alle_events  = json.loads(pending_file.read_text())["events"]
+
     def _vorschau_zeile(e: dict) -> str:
         veranst = e.get("_verein_name", "")
         ort     = e.get("ort", "")
@@ -441,23 +512,27 @@ def cmd_import(secrets: dict) -> None:
         if veranst: teile.append(veranst[:25])
         if ort:     teile.append(ort[:25])
         return f"• {e['datum']} {e.get('uhrzeit',''):5} – {' · '.join(teile)} [{e['_gemeinde']}]"
+
+    neue     = [e for e in alle_events if e["_neu"]]
     vorschau = "\n".join(_vorschau_zeile(e) for e in neue[:15])
     if len(neue) > 15:
         vorschau += f"\n… +{len(neue)-15} weitere neue"
 
-    sv_labels   = sorted({e.get("_label") or e["_verein_key"] for e in alle_events if e.get("_sv")})
-    sv_hinweis  = (f"\n\n⛔ Selbstverwaltete Vereine ignoriert ({sv_gesamt} Termine): "
-                   + ", ".join(sv_labels)) if sv_gesamt else ""
-    zähler      = f"Gesamt: {len(alle_events)} | 🆕 Neu: {neu_gesamt} | ⏭ Duplikate: {dup_gesamt}"
+    sv_labels  = sorted({e.get("_label") or e["_verein_key"] for e in alle_events if e.get("_sv")})
+    sv_hinweis = (f"\n\n⛔ Selbstverwaltete Vereine ignoriert ({sv_gesamt} Termine): "
+                  + ", ".join(sv_labels)) if sv_gesamt else ""
+    zähler     = f"Gesamt: {result['gesamt']} | 🆕 Neu: {neu_gesamt} | ⏭ Duplikate: {dup_gesamt}"
     if sv_gesamt:
         zähler += f" | 🔒 SV: {sv_gesamt}"
 
+    gemeinden     = json.loads(GEMEINDEN_FILE.read_text())
     gemeinden_str = ", ".join(g["name"] for g in gemeinden)
     msg = (f"🏡 heimat-info Import\n"
            f"Gemeinden: {gemeinden_str}\n"
            f"{zähler}\n\n"
            + (vorschau if neue else "Alle Termine bereits vorhanden.")
-           + sv_hinweis)
+           + sv_hinweis
+           + f"\n\n→ Admin-Bereich: vereinskalender.online/#admin → Importe")
 
     send_telegram_inline(token, chat_id, msg, [[
         {"text": f"✅ {neu_gesamt} importieren", "callback_data": f"heimat_ok:{uid}"},
@@ -466,18 +541,6 @@ def cmd_import(secrets: dict) -> None:
 
     if fehler:
         send_telegram(token, chat_id, f"⚠️ Fetch-Fehler bei: {', '.join(fehler)}")
-
-    # Excel nach Dropbox exportieren (nur neue Termine, zur manuellen Bearbeitung am Mac)
-    try:
-        db_token    = _get_dropbox_token(secrets)
-        excel_bytes = _generate_excel(alle_events, uid)
-        _upload_dropbox(db_token, excel_bytes, DROPBOX_EXCEL_PATH)
-        send_telegram(token, chat_id,
-                      "📊 Excel: heimat_preview.xlsx → Dropbox\n"
-                      "Bearbeite am Mac, dann /heimat-excel schicken.")
-    except Exception as exc:
-        _log(f"⚠️ Excel-Export fehlgeschlagen: {exc}")
-        send_telegram(token, chat_id, f"⚠️ Excel-Export fehlgeschlagen: {exc}")
 
 
 def cmd_add(url: str, secrets: dict) -> None:
@@ -637,7 +700,7 @@ def cmd_excel(secrets: dict) -> None:
         send_telegram(token, chat_id, "❌ UID nicht im Meta-Sheet gefunden.")
         return
 
-    pending_file = Path(f"/tmp/heimat_pending_{uid}.json")
+    pending_file = PENDING_DIR / f"heimat_pending_{uid}.json"
     if not pending_file.exists():
         send_telegram(token, chat_id,
                       f"⚠️ Pending-Datei nicht gefunden (uid={uid}).\n"
@@ -690,6 +753,39 @@ def cmd_excel(secrets: dict) -> None:
         {"text": f"✅ {neu_gesamt} importieren", "callback_data": f"heimat_ok:{uid}"},
         {"text": "❌ Verwerfen",                 "callback_data": f"heimat_no:{uid}"},
     ]])
+
+
+def fetch_and_save_pending_for_url(url: str) -> dict:
+    """Import für eine einzelne URL. Bekannte Gemeinde: direkt importieren.
+    Neue URL: Playwright-Discovery → in heimat_gemeinden.json eintragen → importieren.
+    Gibt Summary-Dict zurück (wie fetch_and_save_pending) oder {"error": "..."}."""
+    gemeinden = json.loads(GEMEINDEN_FILE.read_text()) if GEMEINDEN_FILE.exists() else []
+
+    # Bekannte Gemeinde anhand URL suchen
+    treffer = next((g for g in gemeinden if g.get("url") == url), None)
+    if treffer:
+        return fetch_and_save_pending(gemeinden_filter=[url])
+
+    # Neue URL: Discovery via Playwright
+    _log(f"Discovery für neue URL: {url}")
+    c_id = discover_c_id(url)
+    if not c_id:
+        return {"error": f"Keine heimat-info ID gefunden auf: {url}"}
+
+    if any(g["c_id"] == c_id for g in gemeinden):
+        # Bereits vorhanden (andere URL, gleiche c_id)
+        return fetch_and_save_pending(gemeinden_filter=[next(
+            g["url"] for g in gemeinden if g["c_id"] == c_id)])
+
+    slug  = re.sub(r'https?://(www\.)?', '', url).split('/')[0]
+    slug  = re.sub(r'[^a-z0-9_]', '', slug.lower().replace('-', '_').replace('.', '_'))[:20]
+    name  = slug.replace('_', ' ').title()
+    eintrag = {"name": name, "label": name, "verein_key": slug, "c_id": c_id, "url": url}
+    gemeinden.append(eintrag)
+    GEMEINDEN_FILE.write_text(json.dumps(gemeinden, ensure_ascii=False, indent=2))
+    _log(f"✅ Neue Gemeinde gespeichert: {name} ({c_id[:8]}…)")
+
+    return fetch_and_save_pending(gemeinden_filter=[url])
 
 
 def main() -> None:

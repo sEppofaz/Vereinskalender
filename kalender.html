@@ -369,6 +369,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
     <div id="imp-content" style="display:none">
     <div class="adm-tabs">
       <button class="adm-tab on" id="admbtn-upload" onclick="switchAdmTab('upload')">&#128229; Import</button>
+      <button class="adm-tab" id="admbtn-imp" onclick="switchAdmTab('imp')">&#127969; Importe<span id="imp-pending-badge" style="display:none;background:#ff9500;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;vertical-align:middle;line-height:16px"></span></button>
       <button class="adm-tab" id="admbtn-ort" onclick="switchAdmTab('ort')">&#128205; Ortschaften</button>
       <button class="adm-tab" id="admbtn-ver" onclick="switchAdmTab('ver')">&#127974; Vereine</button>
       <button class="adm-tab" id="admbtn-acc" onclick="switchAdmTab('acc')">&#128101; Accounts<span id="acc-pending-badge" style="display:none;background:#ff3b30;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;vertical-align:middle;line-height:16px"></span></button>
@@ -423,6 +424,32 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       </div>
     </div>
     </div><!-- adm-tab-upload -->
+
+    <!-- Tab: Importe (heimat-info) -->
+    <div id="adm-tab-imp" style="display:none">
+      <div class="filter-card" style="margin-bottom:12px">
+        <div class="f-toggle" style="cursor:default"><span class="f-name">&#127969; Import starten</span></div>
+        <div style="padding:0 14px 14px">
+          <button onclick="triggerAllImport()" id="imp-trigger-all-btn"
+                  style="width:100%;padding:10px;border:1.5px solid var(--accent);border-radius:10px;background:var(--bg);color:var(--accent);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px">
+            &#128260; Alle Gemeinden importieren
+          </button>
+          <div style="display:flex;gap:8px">
+            <input type="url" id="imp-url-input" placeholder="https://www.gemeinde-xyz.de/veranstaltungen/"
+                   style="flex:1;padding:9px 12px;border:1.5px solid var(--border2);border-radius:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none">
+            <button onclick="triggerUrlImport()"
+                    style="padding:9px 14px;border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;cursor:pointer;white-space:nowrap">
+              &#9654; Starten
+            </button>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-top:6px">Bekannte Gemeinde: sofort importieren. Neue URL: Discovery via Playwright (~30&nbsp;Sek.).</div>
+          <div id="imp-trigger-msg" style="display:none;margin-top:8px;padding:8px 12px;border-radius:8px;font-size:13px"></div>
+        </div>
+      </div>
+      <div id="imp-pending-list">
+        <div style="text-align:center;padding:40px 20px;color:var(--text3)">&#127969; Lade&hellip;</div>
+      </div>
+    </div><!-- adm-tab-imp -->
 
     <!-- Tab 3: Vereine -->
     <div id="adm-tab-ver" style="display:none">
@@ -1366,6 +1393,7 @@ async function checkPassword(){
       document.getElementById("pw-gate").style.display="none";
       document.getElementById("imp-content").style.display="";
       loadPendingVereine();
+      _loadImporteBadge();
     } else {
       err.textContent="Falsches Passwort.";
       document.getElementById("pw-input").select();
@@ -1463,10 +1491,11 @@ document.querySelector(".content").addEventListener("scroll",function(){
 
 /* ── Admin-Tabs ── */
 function switchAdmTab(tab){
-  ["upload","ort","ver","acc","trm","sta"].forEach(t=>{
+  ["upload","imp","ort","ver","acc","trm","sta"].forEach(t=>{
     document.getElementById("adm-tab-"+t).style.display=t===tab?"":"none";
     document.getElementById("admbtn-"+t).classList.toggle("on",t===tab);
   });
+  if(tab==="imp")loadImporte();
   if(tab==="ort")loadOrtschaften();
   if(tab==="ver")loadVereine();
   if(tab==="acc"){loadPendingVereine();loadAllAccounts();}
@@ -2176,6 +2205,169 @@ async function updateVereinRubrik(key,rubrik){
   rubriken[key]=rubrik;
   renderRubrikBar();
   render();
+}
+
+/* ── Importe-Tab ── */
+let _impGeo={};  // {uid: {verein_key: {heimatort,gemeinde,landkreis}}}
+
+async function _loadImporteBadge(){
+  try{
+    const token=sessionStorage.getItem("ut")||"";
+    const list=await(await fetch("/api/admin/importe",{headers:{"X-Upload-Token":token}})).json();
+    const badge=document.getElementById("imp-pending-badge");
+    if(list.length){badge.textContent=list.length;badge.style.display="";}
+    else badge.style.display="none";
+  }catch(e){}
+}
+
+async function loadImporte(){
+  const el=document.getElementById("imp-pending-list");
+  const token=sessionStorage.getItem("ut")||"";
+  el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">&#127969; Lade&hellip;</div>';
+  try{
+    const list=await(await fetch("/api/admin/importe",{headers:{"X-Upload-Token":token}})).json();
+    const badge=document.getElementById("imp-pending-badge");
+    if(list.length){badge.textContent=list.length;badge.style.display="";}
+    else{badge.style.display="none";}
+    if(!list.length){
+      el.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--text3)">Keine offenen Importe.</div>';
+      return;
+    }
+    el.innerHTML=list.map(imp=>renderImportCard(imp)).join("");
+    if(!_impGeo[list[0]?.uid])list.forEach(imp=>{
+      _impGeo[imp.uid]={};
+      imp.vereine.forEach(v=>{_impGeo[imp.uid][v.key]={heimatort:"",gemeinde:v.gemeinde||"",landkreis:"Landkreis Landshut"};});
+    });
+  }catch(e){el.innerHTML='<div style="color:#ff3b30;padding:16px">Fehler: '+escHtml(String(e))+'</div>';}
+}
+
+function renderImportCard(imp){
+  const d=imp.erzeugt?new Date(imp.erzeugt).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"";
+  const stats=`Gesamt: ${imp.gesamt} | 🆕 Neu: ${imp.neu} | ⏭ Duplikate: ${imp.duplikate}`+(imp.sv?` | 🔒 SV: ${imp.sv}`:"");
+  const vereineHtml=imp.vereine.map(v=>renderVereinRow(imp.uid,v)).join("");
+  return `<div class="filter-card" style="margin-bottom:12px" id="imp-card-${imp.uid}">
+    <div style="padding:12px 14px 0">
+      <div style="font-weight:600;font-size:15px;color:var(--text1)">&#127969; ${escHtml(imp.quelle)} <span style="font-size:12px;font-weight:400;color:var(--text3)">${d}</span></div>
+      <div style="font-size:13px;color:var(--text2);margin:4px 0 10px">${stats}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button onclick="confirmAll('${imp.uid}')" style="flex:1;padding:8px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer">&#10003; Alle best&auml;tigen</button>
+        <button onclick="rejectAll('${imp.uid}')" style="flex:1;padding:8px;border:1.5px solid #ff3b30;border-radius:8px;background:var(--bg);color:#ff3b30;font-size:13px;cursor:pointer">&#10005; Alle verwerfen</button>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--border)">${vereineHtml}</div>
+  </div>`;
+}
+
+function renderVereinRow(uid,v){
+  if(!_impGeo[uid])_impGeo[uid]={};
+  if(!_impGeo[uid][v.key])_impGeo[uid][v.key]={heimatort:"",gemeinde:v.gemeinde||"",landkreis:"Landkreis Landshut"};
+  const g=_impGeo[uid][v.key];
+  const termineHtml=v.termine&&v.termine.length
+    ?v.termine.slice(0,8).map(t=>`<div style="font-size:12px;color:var(--text3);padding:2px 0">${t.datum}${t.uhrzeit?" "+t.uhrzeit:""} – ${escHtml(t.bezeichnung)}${t.ort?" · "+escHtml(t.ort):""}</div>`).join("")
+      +(v.termine.length>8?`<div style="font-size:12px;color:var(--text3)">… +${v.termine.length-8} weitere</div>`:"")
+    :'<div style="font-size:12px;color:var(--text3)">Keine neuen Termine.</div>';
+  return `<div style="padding:10px 14px;border-bottom:1px solid var(--border)" id="imp-row-${uid}-${v.key}">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="font-weight:600;font-size:14px;color:var(--text1)">${escHtml(v.label)} <span style="font-size:12px;font-weight:400;color:var(--text3)">${v.neu} neu</span></div>
+      <div style="display:flex;gap:6px">
+        <button onclick="confirmVerein('${uid}','${v.key}')" style="padding:5px 10px;border:none;border-radius:7px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer">&#10003;</button>
+        <button onclick="rejectVerein('${uid}','${v.key}')" style="padding:5px 10px;border:1.5px solid #ff3b30;border-radius:7px;background:var(--bg);color:#ff3b30;font-size:12px;cursor:pointer">&#10005;</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+      <div><div style="font-size:10px;color:var(--text3);margin-bottom:2px">Heimatort</div>
+        <input value="${escHtml(g.heimatort)}" oninput="_impGeo['${uid}']['${v.key}'].heimatort=this.value"
+               style="width:100%;padding:5px 8px;border:1.5px solid var(--border2);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"></div>
+      <div><div style="font-size:10px;color:var(--text3);margin-bottom:2px">Gemeinde</div>
+        <input value="${escHtml(g.gemeinde)}" oninput="_impGeo['${uid}']['${v.key}'].gemeinde=this.value"
+               style="width:100%;padding:5px 8px;border:1.5px solid var(--border2);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"></div>
+      <div><div style="font-size:10px;color:var(--text3);margin-bottom:2px">Landkreis</div>
+        <input value="${escHtml(g.landkreis)}" oninput="_impGeo['${uid}']['${v.key}'].landkreis=this.value"
+               style="width:100%;padding:5px 8px;border:1.5px solid var(--border2);border-radius:7px;font-size:12px;background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"></div>
+    </div>
+    ${termineHtml}
+  </div>`;
+}
+
+async function confirmVerein(uid,key){
+  const token=sessionStorage.getItem("ut")||"";
+  const geo={};
+  if(_impGeo[uid]&&_impGeo[uid][key])geo[key]=_impGeo[uid][key];
+  const row=document.getElementById(`imp-row-${uid}-${key}`);
+  if(row)row.style.opacity="0.5";
+  try{
+    const r=await fetch(`/api/admin/importe/${uid}/confirm`,{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({vereine:[key],geo})});
+    const d=await r.json();
+    if(d.ok){if(row)row.remove();await loadImporte();}
+    else alert("Fehler: "+(d.error||"unbekannt"));
+  }catch(e){alert("Netzwerkfehler: "+e);if(row)row.style.opacity="";}
+}
+
+async function rejectVerein(uid,key){
+  const token=sessionStorage.getItem("ut")||"";
+  const row=document.getElementById(`imp-row-${uid}-${key}`);
+  if(row)row.style.opacity="0.5";
+  try{
+    const r=await fetch(`/api/admin/importe/${uid}/reject`,{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({vereine:[key]})});
+    const d=await r.json();
+    if(d.ok){if(row)row.remove();await loadImporte();}
+    else alert("Fehler: "+(d.error||"unbekannt"));
+  }catch(e){alert("Netzwerkfehler: "+e);if(row)row.style.opacity="";}
+}
+
+async function confirmAll(uid){
+  const token=sessionStorage.getItem("ut")||"";
+  const geo=_impGeo[uid]||{};
+  const card=document.getElementById(`imp-card-${uid}`);
+  if(card)card.style.opacity="0.5";
+  try{
+    const r=await fetch(`/api/admin/importe/${uid}/confirm`,{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({alle:true,geo})});
+    const d=await r.json();
+    if(d.ok)await loadImporte();
+    else{alert("Fehler: "+(d.error||"unbekannt"));if(card)card.style.opacity="";}
+  }catch(e){alert("Netzwerkfehler: "+e);if(card)card.style.opacity="";}
+}
+
+async function rejectAll(uid){
+  if(!confirm("Gesamten Import verwerfen?"))return;
+  const token=sessionStorage.getItem("ut")||"";
+  const card=document.getElementById(`imp-card-${uid}`);
+  if(card)card.style.opacity="0.5";
+  try{
+    const r=await fetch(`/api/admin/importe/${uid}/reject`,{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({alle:true})});
+    const d=await r.json();
+    if(d.ok)await loadImporte();
+    else{alert("Fehler: "+(d.error||"unbekannt"));if(card)card.style.opacity="";}
+  }catch(e){alert("Netzwerkfehler: "+e);if(card)card.style.opacity="";}
+}
+
+async function triggerAllImport(){
+  const token=sessionStorage.getItem("ut")||"";
+  const btn=document.getElementById("imp-trigger-all-btn");
+  const msg=document.getElementById("imp-trigger-msg");
+  btn.disabled=true;btn.textContent="⏳ Starte…";
+  try{
+    const r=await fetch("/api/admin/importe/trigger",{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({alle:true})});
+    const d=await r.json();
+    msg.style.display="";
+    if(d.ok){msg.style.background="#d4edda";msg.style.color="#155724";msg.textContent="✅ "+d.message;}
+    else{msg.style.background="#f8d7da";msg.style.color="#721c24";msg.textContent="❌ "+(d.error||"Fehler");}
+  }catch(e){msg.style.display="";msg.style.background="#f8d7da";msg.style.color="#721c24";msg.textContent="❌ Netzwerkfehler: "+e;}
+  finally{btn.disabled=false;btn.textContent="🔄 Alle Gemeinden importieren";}
+}
+
+async function triggerUrlImport(){
+  const token=sessionStorage.getItem("ut")||"";
+  const url=(document.getElementById("imp-url-input").value||"").trim();
+  const msg=document.getElementById("imp-trigger-msg");
+  if(!url){msg.style.display="";msg.style.background="#fff3cd";msg.style.color="#856404";msg.textContent="⚠️ Bitte URL eingeben.";return;}
+  msg.style.display="";msg.style.background="var(--card)";msg.style.color="var(--text2)";msg.textContent="⏳ Starte Import…";
+  try{
+    const r=await fetch("/api/admin/importe/trigger",{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({url})});
+    const d=await r.json();
+    if(d.ok){msg.style.background="#d4edda";msg.style.color="#155724";msg.textContent="✅ "+d.message;}
+    else{msg.style.background="#f8d7da";msg.style.color="#721c24";msg.textContent="❌ "+(d.error||"Fehler");}
+  }catch(e){msg.style.background="#f8d7da";msg.style.color="#721c24";msg.textContent="❌ Netzwerkfehler: "+e;}
 }
 
 /* ── Ortschaften-Tab ── */
