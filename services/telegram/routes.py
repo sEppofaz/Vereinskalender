@@ -31,7 +31,7 @@ telegram_bp = Blueprint("telegram", __name__)
 _DROPBOX_INVOICE_REFRESH_TOKEN = os.environ.get("DROPBOX_INVOICE_REFRESH_TOKEN", "")
 _DROPBOX_INVOICE_APP_KEY       = os.environ.get("DROPBOX_INVOICE_APP_KEY", "")
 _DROPBOX_INVOICE_APP_SECRET    = os.environ.get("DROPBOX_INVOICE_APP_SECRET", "")
-_TODOS_FILE_PATH               = "/Apps/Claude/PKA/Todos.json"
+_TODOS_FILE_PATH               = "/Apps/Claude/Todo-App/Todos.json"
 _GOOGLE_MAPS_API_KEY           = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 _VERKEHR_ORIGIN                = "Hölskofen, Pfeffenhausen, Bayern, Deutschland"
 

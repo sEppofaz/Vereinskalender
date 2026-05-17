@@ -12,7 +12,7 @@ _APP_KEY       = os.environ.get("DROPBOX_INVOICE_APP_KEY", "")
 _APP_SECRET    = os.environ.get("DROPBOX_INVOICE_APP_SECRET", "")
 _TOKEN         = os.environ.get("TOKEN", "")
 _CHAT_ID       = os.environ.get("CHAT_ID", "")
-_TODOS_FILE    = "/Apps/Claude/PKA/Todos.json"
+_TODOS_FILE    = "/Apps/Claude/Todo-App/Todos.json"
 
 PRIO_EMOJI = {"hoch": "🔴", "mittel": "🟡", "niedrig": "⚪"}
 
