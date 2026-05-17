@@ -368,6 +368,7 @@ html,body{height:100%;background:var(--bg2);color:var(--text);font-family:-apple
       <button class="adm-tab" id="admbtn-acc" onclick="switchAdmTab('acc')">&#128101; Accounts<span id="acc-pending-badge" style="display:none;background:#ff3b30;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:4px;vertical-align:middle;line-height:16px"></span></button>
       <button class="adm-tab" id="admbtn-trm" onclick="switchAdmTab('trm')">&#128197; Termine</button>
       <button class="adm-tab" id="admbtn-sta" onclick="switchAdmTab('sta')">&#128202; Stats</button>
+      <button class="adm-tab" onclick="adminLogout()" title="Abmelden" style="margin-left:auto;color:#ff3b30">&#128275;</button>
     </div>
 
     <!-- Tab 1: Upload -->
@@ -1388,7 +1389,7 @@ if(ADMIN){
   }catch(e){}
 })();
 let importOpen=false;
-let adminAuth=!!sessionStorage.getItem("admin_auth");
+let adminAuth=!!localStorage.getItem("admin_auth");
 
 function toggleImport(){
   importOpen=!importOpen;
@@ -1422,8 +1423,8 @@ async function checkPassword(){
     });
     if(res.ok){
       adminAuth=true;
-      sessionStorage.setItem("admin_auth","1");
-      sessionStorage.setItem("ut",pw);
+      localStorage.setItem("admin_auth","1");
+      localStorage.setItem("ut",pw);
       document.getElementById("pw-gate").style.display="none";
       document.getElementById("imp-content").style.display="";
       loadPendingVereine();
@@ -1435,6 +1436,15 @@ async function checkPassword(){
   }catch(e){
     err.textContent="Verbindungsfehler.";
   }
+}
+
+function adminLogout(){
+  localStorage.removeItem("admin_auth");
+  localStorage.removeItem("ut");
+  adminAuth=false;
+  document.getElementById("pw-gate").style.display="";
+  document.getElementById("imp-content").style.display="none";
+  document.getElementById("pw-input").value="";
 }
 
 /* ── Import ── */
@@ -1471,7 +1481,7 @@ async function startUpload(file){
   setTimeout(()=>{lbl.textContent=isXls?"Excel wird verarbeitet… (ca. 5 Sek.)":isImg?"Claude liest das Foto… (15–30 Sek.)":"Claude analysiert den Kalender… (30–60 Sek.)";},2000);
 
   try{
-    const token=sessionStorage.getItem("ut")||"";
+    const token=localStorage.getItem("ut")||"";
     const plz=(document.getElementById("upload-plz").value||"").trim();
     const fd=new FormData();
     fd.append("file",file);
@@ -1540,7 +1550,7 @@ let _chartPeriod=30;
 
 async function loadStats(){
   const el=document.getElementById("sta-tab-content");
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   el.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--text3)">&#128202; Lade&hellip;</div>';
   try{
     const data=await(await fetch("/api/admin/stats",{headers:{"X-Upload-Token":token}})).json();
@@ -1659,7 +1669,7 @@ async function loadChart(d){
   if(!el)return;
   el.innerHTML='<div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div>';
   try{
-    const token=sessionStorage.getItem("ut")||"";
+    const token=localStorage.getItem("ut")||"";
     const resp=await fetch("/api/admin/stats/chart?d="+d,{headers:{"X-Upload-Token":token}});
     const data=await resp.json();
     renderChart(el,data.tage,d);
@@ -1672,7 +1682,7 @@ async function loadHourlyChart(){
   const el=document.getElementById("sta-hourly");
   if(!el)return;
   try{
-    const token=sessionStorage.getItem("ut")||"";
+    const token=localStorage.getItem("ut")||"";
     const resp=await fetch("/api/admin/stats/hourly?d=30",{headers:{"X-Upload-Token":token}});
     const data=await resp.json();
     renderHourlyChart(el,data.stunden||[]);
@@ -1790,7 +1800,7 @@ function renderChart(el,tage,d){
 async function loadPendingVereine(){
   const el=document.getElementById("acc-list");
   const badge=document.getElementById("acc-pending-badge");
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const list=await(await fetch("/api/admin/vereine-pending",{headers:{"X-Upload-Token":token}})).json();
     if(badge){
@@ -1812,7 +1822,7 @@ async function loadPendingVereine(){
 
 async function approveVerein(id,btn){
   if(!confirm("Verein wirklich freigeben?"))return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   btn.disabled=true;
   const resp=await fetch(`/api/admin/vereine/${id}/approve`,{method:"POST",headers:{"X-Upload-Token":token}});
   if(!resp.ok){
@@ -1824,7 +1834,7 @@ async function approveVerein(id,btn){
 }
 async function rejectVerein(id,btn){
   if(!confirm("Registrierung ablehnen?"))return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   btn.disabled=true;
   const resp=await fetch(`/api/admin/vereine/${id}/reject`,{method:"POST",headers:{"X-Upload-Token":token}});
   if(!resp.ok){
@@ -1842,7 +1852,7 @@ async function loadAllAccounts(){
   const el=document.getElementById("acc-all-content");
   if(!el)return;
   el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Lade&#8230;</div>';
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const list=await(await fetch("/api/admin/users",{headers:{"X-Upload-Token":token}})).json();
     renderAllAccounts(list);
@@ -1973,7 +1983,7 @@ function openVereinEditModal(verein_id,verein_name,vData){
 }
 
 async function saveVereinEdit(verein_id){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const msg=document.getElementById("ve-msg");
   if(msg){msg.style.color="var(--text3)";msg.textContent="Speichere…";}
   try{
@@ -2012,7 +2022,7 @@ async function saveVereinEdit(verein_id){
 async function deleteVereinAdmin(verein_id,verein_name,verein_key){
   if(!confirm(`Verein-Account "${verein_name}" löschen?\n\nDer Login-Zugang wird dauerhaft entfernt.`))return;
   const deleteTermine=confirm(`Sollen auch alle Termine von "${verein_name}" gelöscht werden?\n\nOK = Ja, alle löschen · Abbrechen = Nein, Termine behalten`);
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const r=await fetch(`/api/admin/verein/${verein_id}`,{
       method:"DELETE",
@@ -2038,7 +2048,7 @@ let _lastVereinList=[],_vereinSearch="",_vereinRubrikFilter="",_drawerKey=null,_
 async function loadVereine(){
   const el=document.getElementById("ver-tab-content");
   el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Lade&#8230;</div>';
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const d=await(await fetch("/api/vereine",{headers:{"X-Upload-Token":token}})).json();
     _lastVereinList=d;
@@ -2128,7 +2138,7 @@ function scrollToVereinLetter(l){
 }
 
 async function saveVereinMeta(key,field,value,inputEl){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const r=await fetch("/api/vereine",{
       method:"POST",
@@ -2151,7 +2161,7 @@ async function toggleSelbstverwaltung(key,name,currentValue){
     ?`🔒 Selbstverwaltung für "${name}" aktivieren?\n\nTermine dieses Vereins werden bei Importen nicht überschrieben. Admin wird beim Bearbeiten gewarnt.`
     :`🔓 Selbstverwaltung für "${name}" deaktivieren?\n\nTermine können wieder bei allgemeinen Importen überschrieben werden.`;
   if(!confirm(msg))return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const r=await fetch("/api/vereine",{
       method:"POST",
@@ -2181,7 +2191,7 @@ async function deleteVerein(key,name,nTermine){
     ?`"${name}" und ${nTermine} Termine löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.`
     :`"${name}" löschen? (keine Termine vorhanden)\n\nDiese Aktion kann nicht rückgängig gemacht werden.`;
   if(!confirm(msg))return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const r=await fetch(`/api/vereine/${encodeURIComponent(key)}`,{method:"DELETE",headers:{"X-Upload-Token":token}});
     const d=await r.json();
@@ -2236,7 +2246,7 @@ async function toggleDrawerSV(){
     ?`🔒 Selbstverwaltung für "${v.name}" aktivieren?\nTermine werden bei Importen nicht überschrieben.`
     :`🔓 Selbstverwaltung für "${v.name}" deaktivieren?`;
   if(!confirm(msg))return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const r=await fetch("/api/vereine",{method:"POST",headers:{"Content-Type":"application/json","X-Upload-Token":token},body:JSON.stringify({key,selbstverwaltung:neu})});
   const d=await r.json();
   if(d.ok){v.selbstverwaltung=neu;if(!meta[key])meta[key]={};meta[key].selbstverwaltung=neu;_updateDrawerSVBtn(neu);renderVereine(_lastVereinList);}
@@ -2245,7 +2255,7 @@ async function toggleDrawerSV(){
 
 async function saveVereinDrawer(){
   const key=_drawerKey;if(!key)return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const btn=document.getElementById("vd-save-btn");
   btn.disabled=true;btn.textContent="Speichern…";
   const body={
@@ -2285,7 +2295,7 @@ let _impGeo={};  // {uid: {verein_key: {heimatort,gemeinde,landkreis}}}
 
 async function _loadImporteBadge(){
   try{
-    const token=sessionStorage.getItem("ut")||"";
+    const token=localStorage.getItem("ut")||"";
     const list=await(await fetch("/api/admin/importe",{headers:{"X-Upload-Token":token}})).json();
     const badge=document.getElementById("imp-pending-badge");
     if(list.length){badge.textContent=list.length;badge.style.display="";}
@@ -2295,7 +2305,7 @@ async function _loadImporteBadge(){
 
 async function loadImporte(){
   const el=document.getElementById("imp-pending-list");
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">&#127969; Lade&hellip;</div>';
   try{
     const list=await(await fetch("/api/admin/importe",{headers:{"X-Upload-Token":token}})).json();
@@ -2363,7 +2373,7 @@ function renderVereinRow(uid,v){
 }
 
 async function confirmVerein(uid,key){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const geo={};
   if(_impGeo[uid]&&_impGeo[uid][key])geo[key]=_impGeo[uid][key];
   const row=document.getElementById(`imp-row-${uid}-${key}`);
@@ -2377,7 +2387,7 @@ async function confirmVerein(uid,key){
 }
 
 async function rejectVerein(uid,key){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const row=document.getElementById(`imp-row-${uid}-${key}`);
   if(row)row.style.opacity="0.5";
   try{
@@ -2389,7 +2399,7 @@ async function rejectVerein(uid,key){
 }
 
 async function confirmAll(uid){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const geo=_impGeo[uid]||{};
   const card=document.getElementById(`imp-card-${uid}`);
   if(card)card.style.opacity="0.5";
@@ -2403,7 +2413,7 @@ async function confirmAll(uid){
 
 async function rejectAll(uid){
   if(!confirm("Gesamten Import verwerfen?"))return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const card=document.getElementById(`imp-card-${uid}`);
   if(card)card.style.opacity="0.5";
   try{
@@ -2415,7 +2425,7 @@ async function rejectAll(uid){
 }
 
 async function triggerAllImport(){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const btn=document.getElementById("imp-trigger-all-btn");
   const msg=document.getElementById("imp-trigger-msg");
   btn.disabled=true;btn.textContent="⏳ Starte…";
@@ -2430,7 +2440,7 @@ async function triggerAllImport(){
 }
 
 async function triggerUrlImport(){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const url=(document.getElementById("imp-url-input").value||"").trim();
   const msg=document.getElementById("imp-trigger-msg");
   if(!url){msg.style.display="";msg.style.background="#fff3cd";msg.style.color="#856404";msg.textContent="⚠️ Bitte URL eingeben.";return;}
@@ -2556,7 +2566,7 @@ function _admFld(label,id,type,val){
 }
 async function saveTermin(idx){
   const t=_admTermine[idx];
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const msg=document.getElementById("trm-msg");
   const selectedVerein=document.getElementById("trm-verein")?.value||t.verein;
   const changes={
@@ -2593,7 +2603,7 @@ async function deleteTermin(idx){
     if(!confirm(`⚠️ "${labels[t.verein]||t.verein}" verwaltet ihre Termine selbst.\nTrotzdem löschen?`))return;
   }
   if(!confirm(`Termin wirklich löschen?\n\n${t.datum}  ${t.uhrzeit||""}\n${t.bezeichnung}\n${t._vereinName}`))return;
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   try{
     const r=await fetch("/api/termine",{
       method:"DELETE",
@@ -2778,7 +2788,7 @@ function showInfoModal(){
 }
 
 async function doConfirmImport(){
-  const token=sessionStorage.getItem("ut")||"";
+  const token=localStorage.getItem("ut")||"";
   const key_remappings=Object.fromEntries(
     Object.entries(_pendingKeyRemappings).filter(([,v])=>v!==null)
   );
