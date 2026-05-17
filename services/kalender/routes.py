@@ -184,17 +184,6 @@ def upload_kalender():
         except Exception:
             data = {}
 
-        ort_cfg     = data.get("_ortschaften", {"whitelist": [], "blacklist": []})
-        known_white = set(ort_cfg.get("whitelist", []))
-        known_black = set(ort_cfg.get("blacklist", []))
-        neue_orts   = sorted({
-            t.get("ortschaft", "").strip()
-            for t in alle
-            if t.get("ortschaft", "").strip()
-               and t["ortschaft"].strip() not in known_white
-               and t["ortschaft"].strip() not in known_black
-        })
-
         known_labels = set(data.get("_labels", {}).keys())
         seen_keys: set = set()
         neue_vereine_ohne_ort: list = []
@@ -206,16 +195,13 @@ def upload_kalender():
             if vkey in known_labels or vkey in seen_keys:
                 continue
             seen_keys.add(vkey)
-            parts     = vname.strip().split()
-            last_word = parts[-1].split("/")[0] if parts else ""
-            if len(last_word) <= 4 or last_word not in known_white:
-                similar = find_similar_keys(vkey, data.get("_labels", {}))
-                entry = {"key": vkey, "name": vname}
-                if similar:
-                    entry["similar_to"] = similar
-                neue_vereine_ohne_ort.append(entry)
+            similar = find_similar_keys(vkey, data.get("_labels", {}))
+            entry = {"key": vkey, "name": vname}
+            if similar:
+                entry["similar_to"] = similar
+            neue_vereine_ohne_ort.append(entry)
 
-        if neue_orts or neue_vereine_ohne_ort:
+        if neue_vereine_ohne_ort:
             import_id = str(_uuid.uuid4())
             form_plz  = request.form.get("plz", "").strip()
             Path(f"/tmp/vk_pending_{import_id}.json").write_text(
@@ -226,7 +212,7 @@ def upload_kalender():
                     "form_plz":  form_plz,
                 }, ensure_ascii=False)
             )
-            log(f"⏳  Upload ausstehend: {len(neue_orts)} Ortschaften, {len(neue_vereine_ohne_ort)} Vereine ohne Heimatort")
+            log(f"⏳  Upload ausstehend: {len(neue_vereine_ohne_ort)} neue Vereine")
             all_labels_list = sorted(
                 [{"key": k, "name": v} for k, v in data.get("_labels", {}).items()],
                 key=lambda x: x["name"].lower()
@@ -235,7 +221,6 @@ def upload_kalender():
                 json.dumps({
                     "pending":                     True,
                     "import_id":                   import_id,
-                    "pending_ortschaften":         neue_orts,
                     "neue_vereine_ohne_ortschaft": neue_vereine_ohne_ort,
                     "all_labels_list":             all_labels_list,
                     "preview": {
@@ -585,8 +570,6 @@ def api_confirm_import():
 
     body               = request.get_json(silent=True) or {}
     import_id          = body.get("import_id", "")
-    confirm_list       = [o.strip() for o in body.get("confirm", []) if o.strip()]
-    reject_list        = [o.strip() for o in body.get("reject",  []) if o.strip()]
     verein_ortschaften = {k: v for k, v in (body.get("verein_ortschaften") or {}).items() if v and v.strip()}
     key_remappings     = {k: v for k, v in (body.get("key_remappings") or {}).items() if k and v}
 
@@ -605,18 +588,9 @@ def api_confirm_import():
         except Exception:
             data = {}
 
-        ort_cfg   = data.get("_ortschaften", {"whitelist": [], "blacklist": []})
-        whitelist = set(ort_cfg.get("whitelist", []))
-        blacklist = set(ort_cfg.get("blacklist", []))
-        for o in confirm_list:
-            whitelist.add(o); blacklist.discard(o)
-        for o in reject_list:
-            blacklist.add(o); whitelist.discard(o)
-        data["_ortschaften"] = {"whitelist": sorted(whitelist), "blacklist": sorted(blacklist)}
-
         result_vereine, total = _do_save_import(alle, auto_plz, form_plz, data, verein_ortschaften, key_remappings or None)
         pending_path.unlink(missing_ok=True)
-        log(f"✅  Confirm-Import: {total} Termine, +{len(confirm_list)} whitelist, +{len(reject_list)} blacklist")
+        log(f"✅  Confirm-Import: {total} Termine")
 
         return (
             json.dumps({"success": True, "vereine": result_vereine, "total": total}, ensure_ascii=False),
@@ -783,51 +757,6 @@ def api_vereine_delete(key):
     log("Verein geloescht: " + key + " (" + name + "), " + str(geloescht) + " Termine entfernt")
     return json.dumps({"ok": True, "geloescht": geloescht}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
 
-@kalender_bp.route("/api/ortschaften", methods=["GET"])
-def api_ortschaften_get():
-    try:
-        raw = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
-    except Exception:
-        raw = {}
-    ort = raw.get("_ortschaften", {"whitelist": [], "blacklist": []})
-    return json.dumps(ort, ensure_ascii=False), 200, {
-        "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache"}
-
-
-@kalender_bp.route("/api/ortschaften", methods=["POST"])
-def api_ortschaften_post():
-    token = request.headers.get("X-Upload-Token", "")
-    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
-        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
-
-    body   = request.get_json(silent=True) or {}
-    name   = (body.get("name") or "").strip()
-    action = body.get("action", "")
-
-    if not name or action not in ("whitelist", "blacklist", "delete"):
-        return json.dumps({"error": "Ungültige Parameter"}), 400, {"Content-Type": "application/json"}
-
-    try:
-        data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
-    except Exception:
-        data = {}
-
-    ort_cfg   = data.get("_ortschaften", {"whitelist": [], "blacklist": []})
-    whitelist = set(ort_cfg.get("whitelist", []))
-    blacklist = set(ort_cfg.get("blacklist", []))
-    if action == "whitelist":
-        whitelist.add(name); blacklist.discard(name)
-    elif action == "blacklist":
-        blacklist.add(name); whitelist.discard(name)
-    elif action == "delete":
-        whitelist.discard(name); blacklist.discard(name)
-
-    data["_ortschaften"] = {"whitelist": sorted(whitelist), "blacklist": sorted(blacklist)}
-    from shared.kalender_store import KalenderStore
-    KalenderStore.update(lambda d: d.update({"_ortschaften": data["_ortschaften"]}))
-    log(f"📍  Ortschaft {action}: {name}")
-    return json.dumps({"success": True}, ensure_ascii=False), 200, {"Content-Type": "application/json"}
-
 
 @kalender_bp.route("/api/termine")
 def api_termine():
@@ -871,9 +800,6 @@ def api_termine():
             log(f"⚠️  Gottesdienste in API: {e}")
 
     json_meta   = raw.get("_meta", {})
-    ort_cfg     = raw.get("_ortschaften", {"whitelist": [], "blacklist": []})
-    ortschaften = {"whitelist": ort_cfg.get("whitelist", []), "blacklist": ort_cfg.get("blacklist", [])}
-    gemeinde_map = ort_cfg.get("gemeinde_map", {})
 
     # DB-Meta laden (Vereinsadmin-Selbstverwaltung, Prio 2); JSON überschreibt (Superadmin, Prio 1)
     try:
@@ -902,7 +828,7 @@ def api_termine():
     rubriken    = {k: _get_rubrik(k, v, merged_meta.get(k, {})) for k, v in labels.items()}
     return (
         json.dumps({"labels": labels, "termine": termine, "meta": merged_meta,
-                    "ortschaften": ortschaften, "gemeinde_map": gemeinde_map, "rubriken": rubriken}, ensure_ascii=False),
+                    "rubriken": rubriken}, ensure_ascii=False),
         200,
         {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache, must-revalidate"},
     )

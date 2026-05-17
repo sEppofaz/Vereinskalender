@@ -632,69 +632,6 @@ def upload_process(user):
     except Exception:
         data = {}
 
-    ort_cfg     = data.get("_ortschaften", {"whitelist": [], "blacklist": []})
-    known_white = set(ort_cfg.get("whitelist", []))
-    known_black = set(ort_cfg.get("blacklist", []))
-    neue_orts   = sorted({
-        t.get("ortschaft", "").strip()
-        for t in alle
-        if t.get("ortschaft", "").strip()
-           and t["ortschaft"].strip() not in known_white
-           and t["ortschaft"].strip() not in known_black
-    })
-
-    if neue_orts:
-        import_id = str(uuid.uuid4())
-        Path(f"/tmp/vk_pending_{import_id}.json").write_text(
-            json.dumps({
-                "import_id":   import_id,
-                "alle":        alle,
-                "auto_plz":    auto_plz,
-                "form_plz":    "",
-                "verein_id":   verein_id,
-                "verein_key":  verein_key,
-                "verein_name": verein_name,
-            }, ensure_ascii=False)
-        )
-
-        ort_items = ""
-        for o in neue_orts:
-            o_esc = html.escape(o)
-            ort_items += f"""
-<div class="card" style="padding:.75rem 1rem">
-  <div style="font-weight:500;margin-bottom:.4rem">{o_esc}</div>
-  <input type="hidden" name="alle_orts" value="{o_esc}">
-  <label style="display:flex;align-items:center;gap:.5rem;margin:0;font-size:.9rem">
-    <input type="checkbox" name="confirm" value="{o_esc}" checked>
-    In Ortsliste aufnehmen
-  </label>
-</div>"""
-
-        preview = sorted(alle, key=lambda x: x.get("datum", ""))
-        prev_rows = "".join(
-            f'<div style="font-size:.82rem;color:#aeaeb2;padding:.3rem 0;'
-            f'border-bottom:1px solid #3a3a3c">'
-            f'{html.escape(t.get("datum",""))} – {html.escape(t.get("bezeichnung",""))}'
-            + (f' · {html.escape(t.get("ortschaft",""))}' if t.get("ortschaft") else "")
-            + '</div>'
-            for t in preview[:10]
-        )
-        more = f'<p class="hint">… und {len(alle) - 10} weitere</p>' if len(alle) > 10 else ""
-
-        body = f"""
-<p class="hint">{len(alle)} Termine gefunden · {len(neue_orts)} neue Ortschaft(en) prüfen</p>
-<h2 style="font-size:.95rem;margin:1rem 0 .5rem">Neue Ortschaften</h2>
-<form method="post" action="/verein/confirm-upload">
-  <input type="hidden" name="import_id" value="{import_id}">
-  {ort_items}
-  <h2 style="font-size:.95rem;margin:1.25rem 0 .5rem">Vorschau (erste 10)</h2>
-  <div class="card">{prev_rows}{more}</div>
-  <button class="btn" type="submit" style="margin-top:1rem">Termine importieren</button>
-</form>
-{_BACK_DASH}"""
-        return _page("Ortschaften prüfen", body)
-
-    # Keine neuen Ortschaften – direkt speichern
     _, total = _do_save_import(alle, auto_plz, "", data)
     def _sv_up(d): d.setdefault("_meta", {}).setdefault(verein_key, {})["selbstverwaltung"] = True; return d
     KalenderStore.update(_sv_up)
@@ -726,23 +663,10 @@ def confirm_upload(user):
         body = '<p class="err">Nicht autorisiert.</p>' + _BACK_DASH
         return _page("Fehler", body), 403
 
-    alle_orts    = request.form.getlist("alle_orts")
-    confirm_list = request.form.getlist("confirm")
-    reject_list  = [o for o in alle_orts if o not in confirm_list]
-
     try:
         data = json.loads(VEREINSTERMINE_FILE.read_text()) if VEREINSTERMINE_FILE.exists() else {}
     except Exception:
         data = {}
-
-    ort_cfg   = data.get("_ortschaften", {"whitelist": [], "blacklist": []})
-    whitelist = set(ort_cfg.get("whitelist", []))
-    blacklist = set(ort_cfg.get("blacklist", []))
-    for o in confirm_list:
-        whitelist.add(o); blacklist.discard(o)
-    for o in reject_list:
-        blacklist.add(o); whitelist.discard(o)
-    data["_ortschaften"] = {"whitelist": sorted(whitelist), "blacklist": sorted(blacklist)}
 
     vk = user["verein_key"]
     _, total = _do_save_import(pending["alle"], pending.get("auto_plz", ""), "", data)

@@ -311,10 +311,7 @@ def do_import(uid: str, verein_keys: list | None = None) -> str:
         data["_labels"] = {}
     if "_meta" not in data:
         data["_meta"] = {}
-    if "_ortschaften" not in data:
-        data["_ortschaften"] = {"whitelist": [], "blacklist": []}
-    whitelist: list = data["_ortschaften"].setdefault("whitelist", [])
-    gemeinde_map: dict = data["_ortschaften"].setdefault("gemeinde_map", {})
+    gemeinde_map: dict = data.setdefault("_ortschaften", {}).setdefault("gemeinde_map", {})
 
     # Alte Gemeinde-Keys entfernen (werden durch per-Veranstalter-Keys ersetzt)
     old_keys: set = set()
@@ -354,8 +351,6 @@ def do_import(uid: str, verein_keys: list | None = None) -> str:
                 "landkreis": e.get("_landkreis", "Landkreis Landshut"),
             }
         ortschaft = e.get("ortschaft", "") or e["_gemeinde"]
-        if ortschaft and ortschaft not in whitelist and ortschaft not in data["_ortschaften"].get("blacklist", []):
-            whitelist.append(ortschaft)
         if ortschaft and ortschaft not in gemeinde_map and verein_gemeinde:
             gemeinde_map[ortschaft] = verein_gemeinde
         data[key].append({
