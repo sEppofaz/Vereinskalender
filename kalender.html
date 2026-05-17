@@ -1521,7 +1521,7 @@ document.querySelector(".content").addEventListener("scroll",function(){
 
 /* ── Admin-Tabs ── */
 function switchAdmTab(tab){
-  ["upload","imp","ort","ver","acc","trm","sta"].forEach(t=>{
+  ["upload","imp","ver","acc","trm","sta"].forEach(t=>{
     document.getElementById("adm-tab-"+t).style.display=t===tab?"":"none";
     document.getElementById("admbtn-"+t).classList.toggle("on",t===tab);
   });
