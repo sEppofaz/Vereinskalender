@@ -556,11 +556,13 @@ def upload_page(user):
         f'<p class="hint" style="margin-bottom:1rem">'
         f'Uploads heute: {used}/{_UPLOAD_LIMIT}</p>'
     )
+    tok = get_csrf_token()
     body = f"""{quota_bar}
 <div class="card">
   <h2 style="font-size:.95rem;margin-top:0">📄 PDF oder Foto</h2>
   <p class="hint">Claude KI extrahiert die Termine automatisch aus dem Dokument.</p>
   <form method="post" action="/verein/upload" enctype="multipart/form-data">
+    {csrf_field(tok)}
     <input type="hidden" name="typ" value="vision">
     <label>Datei (PDF, JPG, PNG, HEIC)</label>
     <input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.heic,.heif">
@@ -573,6 +575,7 @@ def upload_page(user):
   <a class="btn btn-sec" href="/verein/upload-template"
      style="margin-bottom:.75rem">⬇ Vorlage herunterladen (.xlsx)</a>
   <form method="post" action="/verein/upload" enctype="multipart/form-data">
+    {csrf_field(tok)}
     <input type="hidden" name="typ" value="excel">
     <label>Ausgefüllte Excel-Datei (.xlsx)</label>
     <input type="file" name="file" required accept=".xlsx">
@@ -590,6 +593,8 @@ def upload_page(user):
 def upload_process(user):
     if user["role"] != "admin":
         return redirect("/verein/dashboard")
+    if not validate_csrf():
+        return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
 
     verein_name = user["verein_name"]
     verein_key  = user["verein_key"]
@@ -795,6 +800,8 @@ def verein_profil(user):
     telefon     = usr["telefon"] if usr else ""
 
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         new_name      = request.form.get("verein_name", "").strip()
         new_rubrik    = request.form.get("rubrik", "").strip()
         new_heimatort = request.form.get("heimatort", "").strip()
@@ -849,10 +856,12 @@ def verein_profil(user):
     )
     geo_hint = f'<p class="hint">{gemeinde}, {landkreis}</p>' if gemeinde else ""
 
+    tok = get_csrf_token()
     body = f"""
 {'<p class="err">'+error+'</p>' if error else ''}
 {'<p class="ok">'+ok+'</p>' if ok else ''}
 <form method="post">
+  {csrf_field(tok)}
   <label>Vereinsname</label>
   <input name="verein_name" type="text" required value="{html.escape(verein_name)}">
   <label>Rubrik</label>
