@@ -60,6 +60,19 @@ _MAINTENANCE_HTML = """<!DOCTYPE html>
 </body>
 </html>"""
 
+_html_cache: dict = {"data": None, "mtime": 0.0}
+
+
+def _get_kalender_html() -> str:
+    try:
+        mtime = KALENDER_HTML_FILE.stat().st_mtime
+    except OSError:
+        return "<h1>kalender.html nicht gefunden</h1>"
+    if _html_cache["mtime"] != mtime or _html_cache["data"] is None:
+        _html_cache["data"] = KALENDER_HTML_FILE.read_text(encoding="utf-8")
+        _html_cache["mtime"] = mtime
+    return _html_cache["data"]
+
 
 @kalender_bp.route("/manifest.json")
 def manifest_json():
@@ -129,11 +142,7 @@ def manifest_admin_json():
 def admin_page():
     if VKO_MAINTENANCE_FILE.exists():
         return _MAINTENANCE_HTML, 503, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
-    try:
-        html = KALENDER_HTML_FILE.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        html = "<h1>kalender.html nicht gefunden</h1>"
-    html = html.replace(
+    html = _get_kalender_html().replace(
         '<link rel="manifest" href="/manifest.json">',
         '<link rel="manifest" href="/manifest-admin.json">'
     )
@@ -144,11 +153,7 @@ def admin_page():
 def kalender_page():
     if VKO_MAINTENANCE_FILE.exists():
         return _MAINTENANCE_HTML, 503, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
-    try:
-        html = KALENDER_HTML_FILE.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        html = "<h1>kalender.html nicht gefunden</h1>"
-    return html, 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+    return _get_kalender_html(), 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
 
 
 @kalender_bp.route("/upload", methods=["POST"])
