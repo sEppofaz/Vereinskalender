@@ -280,10 +280,8 @@ def _do_save_import(alle: list, auto_plz: str, form_plz: str, data: dict,
         meta_info = lookup_plz(plz)
         for v in result_vereine:
             existing = data["_meta"].get(v["key"], {})
-            data["_meta"][v["key"]] = {
-                **meta_info,
-                **{k: w for k, w in existing.items() if k == "heimatort"},
-            }
+            # Bestehende Felder haben Vorrang – nur neue geo-Felder aus meta_info einfügen
+            data["_meta"][v["key"]] = {**meta_info, **existing}
 
     if verein_ortschaften:
         for v in result_vereine:

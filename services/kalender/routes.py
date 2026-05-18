@@ -1294,11 +1294,12 @@ def api_admin_importe_trigger():
         try:
             ip = _socket.gethostbyname(parsed.hostname or "")
             addr = _ip.ip_address(ip)
-            if addr.is_private or addr.is_loopback or addr.is_link_local:
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast or addr.is_unspecified:
                 return json.dumps({"error": "Private/lokale Adressen nicht erlaubt"}), 400, {
                     "Content-Type": "application/json"}
         except Exception:
-            pass
+            return json.dumps({"error": "DNS-Auflösung fehlgeschlagen"}), 400, {
+                "Content-Type": "application/json"}
 
     def _run():
         try:
