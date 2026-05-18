@@ -546,7 +546,7 @@ const WD=["So","Mo","Di","Mi","Do","Fr","Sa"];
 const MO=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 const ZEIT_LBL={"zukunft":"Künftig","30":"30 Tage","90":"3 Monate","365":"1 Jahr","alle":"Alle"};
 
-let allT=[],labels={},colors={},ortMap={},meta={},allOrteAll={},rubriken={};
+let allT=[],labels={},colors={},meta={},allOrteAll={},rubriken={};
 let zeitraum="zukunft",aktOrte=new Set(),aktVereine=new Set(),aktLandkreis=null,aktGemeinden=new Set(),ready=false;
 let searchChips=[],srchResults=[];
 const secOpen={zeit:false,lk:false,gem:false,ort:false,ver:false,hlp:false};
@@ -626,7 +626,16 @@ function applyStateToUI(){
 async function load(){
   let j;
   try{
-    j=await(await fetch("/api/termine")).json();
+    const resp=await fetch("/api/termine");
+    j=await resp.json();
+    if(!resp.ok){
+      const msg=j&&j.error==="Wartung"
+        ?"&#128296; Wartungsarbeiten &ndash; der Kalender ist gleich wieder erreichbar."
+        :"Fehler beim Laden der Termine. Bitte Seite neu laden.";
+      document.getElementById("ev-list").innerHTML=
+        `<div class="ev-empty"><p>&#128267;</p><small>${msg}</small></div>`;
+      return;
+    }
   }catch(e){
     document.getElementById("ev-list").innerHTML=
       `<div class="ev-empty"><p>&#128267;</p><small>Keine Internetverbindung &ndash; Termine k&ouml;nnen gerade nicht geladen werden.</small></div>`;
@@ -651,8 +660,6 @@ async function load(){
     if(ort){tmp[ort]=tmp[ort]||[];if(!tmp[ort].includes(k))tmp[ort].push(k);}
   });
   allOrteAll=tmp;
-  ortMap={};
-  Object.entries(tmp).forEach(([o,ks])=>{if(ks.length>=2)ortMap[o]=ks;});
 
   buildLandkreisFilter();
   buildGemeindeFilter();
@@ -843,14 +850,6 @@ function resetAll(){
 }
 
 /* ── Ort filter ── */
-// Wörter die keine Ortschaftsnamen sind (Gebäude, Anlagen, Abkürzungen)
-const ORT_EXCLUDE=/^(GH|FF|BRK|SC|FC|KP|EC|KLJB|KSK|und|Hof|Haus|Heim|Saal|Halle|Stube|Platz|Bahn|Grube|Allee|Gasse|Weg|Str|Straße)$/i;
-
-function _extractOrtschaft(ort){
-  if(!ort||!ort.trim()) return null;
-  const parts=ort.trim().split(/[\s,\/\-]+/).filter(w=>w.length>3&&!ORT_EXCLUDE.test(w)&&!/^\d+$/.test(w)&&w.length<=20);
-  return parts.length ? parts[parts.length-1] : null;
-}
 // Alle Verein-Keys einer Ortschaft (via allOrteAll-Label + expliziter meta.heimatort)
 function _vereinsForOrt(o){
   const s=new Set(allOrteAll[o]||[]);
@@ -1062,7 +1061,7 @@ function renderFavBar(){
     const on=activeFavs.has(id);
     const key=String(f.key).replace(/"/g,"&quot;").replace(/'/g,"&#39;");
     const rmBtn=`<span onclick="event.stopPropagation();removeFavorite('${f.type}','${key}')" style="margin-left:4px;opacity:.55;font-size:11px;line-height:1">✕</span>`;
-    return `<span class="chip${on?" on":""}" data-ftype="${f.type}" data-fkey="${key}">${f.icon||""} ${f.label}${rmBtn}</span>`;
+    return `<span class="chip${on?" on":""}" data-ftype="${f.type}" data-fkey="${key}">${escHtml(f.icon||"")} ${escHtml(f.label)}${rmBtn}</span>`;
   }).join("");
 }
 
@@ -1326,15 +1325,16 @@ function render(){
   let _lastDatum=null;
   el.innerHTML=out.map(t=>{
     const col=colors[t.verein]||"#777";
-    const uz=t.uhrzeit?`${t.uhrzeit} Uhr`:"";
-    const ort=t.ort?`<div class="ev-ort">&#128205; ${t.ort}</div>`:"";
-    const veranstLabel=t.veranstalter||labels[t.verein]||t.verein;
-    const ortBadgeTxt=(t.ortschaft&&t.ortschaft.trim())?t.ortschaft.trim():null;
+    const uz=t.uhrzeit?`${escHtml(t.uhrzeit)} Uhr`:"";
+    const ort=t.ort?`<div class="ev-ort">&#128205; ${escHtml(t.ort)}</div>`:"";
+    const veranstLabel=escHtml(t.veranstalter||labels[t.verein]||t.verein);
+    const ortBadgeTxt=(t.ortschaft&&t.ortschaft.trim())?escHtml(t.ortschaft.trim()):null;
     const lk=(meta[t.verein]||{}).landkreis||"Landkreis Landshut";
-    const lkLabel=lk.replace(/^Landkreis\s+/,"");
-    const quelleBadge=t.quelle?(t.quelle_url
-      ?`<a href="${t.quelle_url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">Quelle: ${t.quelle}</a>`
-      :`Quelle: ${t.quelle}`):"";
+    const lkLabel=escHtml(lk.replace(/^Landkreis\s+/,""));
+    const safeQuelleUrl=(t.quelle_url&&/^https?:\/\//i.test(t.quelle_url))?t.quelle_url:null;
+    const quelleBadge=t.quelle?(safeQuelleUrl
+      ?`<a href="${escHtml(safeQuelleUrl)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">Quelle: ${escHtml(t.quelle)}</a>`
+      :`Quelle: ${escHtml(t.quelle)}`):"";
     const badge=`<span class="ev-badge" style="background:${col}22;color:${col}">${veranstLabel}</span>`
       +(ortBadgeTxt?`<span class="ev-badge" style="background:var(--bg2);color:var(--text2);margin-left:3px">📍 ${ortBadgeTxt}</span>`:"")
       +(lkLabel?`<span class="ev-badge" style="background:var(--bg2);color:var(--text2);margin-left:3px">🗺 ${lkLabel}</span>`:"")
@@ -1345,9 +1345,9 @@ function render(){
     _lastDatum=t.datum;
     return sep+`<div class="ev-card" style="border-left-color:${col}">
       <button class="ev-cal" onclick="exportICS(${idx})" title="Zum Kalender hinzufügen">&#128197;</button>
-      <button class="ev-fav js-ev-fav-btn${isFav?' on':''}" data-favk="${t.verein}" data-fav-key="${t.verein.replace(/"/g,'&quot;')}" data-fav-label="${(labels[t.verein]||t.verein).replace(/"/g,'&quot;')}" title="Verein als Favorit" style="position:absolute;top:10px;right:50px;background:none;border:none;font-size:15px;cursor:pointer;padding:4px;line-height:1">⭐</button>
+      <button class="ev-fav js-ev-fav-btn${isFav?' on':''}" data-favk="${escHtml(t.verein)}" data-fav-key="${escHtml(t.verein)}" data-fav-label="${escHtml(labels[t.verein]||t.verein)}" title="Verein als Favorit" style="position:absolute;top:10px;right:50px;background:none;border:none;font-size:15px;cursor:pointer;padding:4px;line-height:1">⭐</button>
       ${uz?`<div class="ev-date">&#128336; ${uz}</div>`:""}
-      <div class="ev-title" style="padding-right:74px">${t.bezeichnung}</div>
+      <div class="ev-title" style="padding-right:74px">${escHtml(t.bezeichnung)}</div>
       ${ort}${badge}
     </div>`;
   }).join("")+
@@ -1814,7 +1814,7 @@ async function loadPendingVereine(){
         <div style="color:var(--text3);font-size:12px">${escHtml(v.email)} &middot; ${v.created_at?.slice(0,10)||""}</div>
         <div style="display:flex;gap:8px;margin-top:8px">
           <button onclick="approveVerein(${v.id},this)" style="flex:1;padding:7px;border-radius:8px;background:#34c759;color:#fff;border:none;font-weight:600;cursor:pointer">&#10003; Freigeben</button>
-          <button onclick="rejectVerein(${v.id},this)" style="flex:1;padding:7px;border-radius:8px;background:#ff3b30;color:#fff;border:none;font-weight:600;cursor:pointer">&#10005; Ablehnen</button>
+          <button onclick="rejectVereinAccount(${v.id},this)" style="flex:1;padding:7px;border-radius:8px;background:#ff3b30;color:#fff;border:none;font-weight:600;cursor:pointer">&#10005; Ablehnen</button>
         </div>
       </div>`).join("");
   }catch(e){el.innerHTML="<div style='color:#ff3b30'>Fehler beim Laden</div>";}
@@ -1832,7 +1832,7 @@ async function approveVerein(id,btn){
   }
   loadPendingVereine();
 }
-async function rejectVerein(id,btn){
+async function rejectVereinAccount(id,btn){
   if(!confirm("Registrierung ablehnen?"))return;
   const token=localStorage.getItem("ut")||"";
   btn.disabled=true;

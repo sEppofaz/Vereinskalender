@@ -774,6 +774,8 @@ def api_termine():
         if key.startswith("_") or not isinstance(events, list):
             continue
         for t in events:
+            if t.get("geloescht") or t.get("deleted"):
+                continue
             termine.append({**t, "verein": key})
 
     _hat_pfarrgemeinde = any(k.startswith("pfarrgemeinde") for k in raw if not k.startswith("_"))
@@ -1005,6 +1007,8 @@ def api_ical_feed():
         if filter_vereine and key not in filter_vereine:
             continue
         for t in events:
+            if t.get("geloescht") or t.get("deleted"):
+                continue
             alle.append({**t, "_vkey": key})
 
     _hat_pfarrgemeinde = any(k.startswith("pfarrgemeinde") for k in raw if not k.startswith("_"))

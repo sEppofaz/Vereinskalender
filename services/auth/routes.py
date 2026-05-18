@@ -1,3 +1,4 @@
+import html
 import os
 import secrets
 import re
@@ -9,7 +10,7 @@ import bcrypt
 from flask import Blueprint, make_response, redirect, request
 
 from shared.vk_db import SESSION_TIMEOUT_HOURS, create_session, db_conn, delete_session, get_session_user, init_db
-from shared.kalender_core import lookup_plz
+from shared.kalender_core import lookup_plz, _make_verein_key
 from shared.vk_mail import (
     send_rejected_email,
     send_reset_email,
@@ -104,6 +105,19 @@ def require_verein_login(f):
     return decorated
 
 
+def _unique_verein_key(conn, verein_name: str) -> str:
+    base = _make_verein_key(verein_name)
+    key = base
+    for i in range(1, 20):
+        exists = conn.execute(
+            "SELECT 1 FROM vereine_accounts WHERE verein_key = ?", (key,)
+        ).fetchone()
+        if not exists:
+            return key
+        key = f"{base}_{i}"
+    return f"{base}_{secrets.token_hex(3)}"
+
+
 def _hash_pw(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
 
@@ -190,6 +204,11 @@ def register():
                     (verein_name, 1, rubrik, heimatort, plz or None, gemeinde or None, landkreis or None),
                 ).fetchone()
                 verein_id = verein_row["id"]
+                verein_key = _unique_verein_key(conn, verein_name)
+                conn.execute(
+                    "UPDATE vereine_accounts SET verein_key = ? WHERE id = ?",
+                    (verein_key, verein_id),
+                )
                 token   = secrets.token_urlsafe(32)
                 expires = (datetime.utcnow() + timedelta(hours=24)).isoformat()
                 conn.execute(
@@ -203,7 +222,7 @@ def register():
                                   rubrik=rubrik, heimatort=heimatort, telefon=telefon)
             body = f"""
 <p class="ok">✅ Registrierung eingegangen!</p>
-<p>Wir haben dir eine E-Mail an <strong>{email}</strong> geschickt. Bitte bestätige deine Adresse.
+<p>Wir haben dir eine E-Mail an <strong>{html.escape(email)}</strong> geschickt. Bitte bestätige deine Adresse.
 Danach prüft der Administrator deine Anfrage (in der Regel innerhalb eines Tages).</p>
 <div class="spam-hint">📬 Keine E-Mail erhalten? Bitte auch im <strong>Spam-Ordner</strong> nachsehen.</div>
 <a class="btn btn-sec" href="/" style="margin-top:.5rem">← Zurück zum Kalender</a>"""
@@ -218,20 +237,20 @@ Danach prüft der Administrator deine Anfrage (in der Regel innerhalb eines Tage
 {'<p class="err">'+error+'</p>' if error else ''}
 <form method="post" autocomplete="on">
   <label>Vereinsname</label>
-  <input name="verein_name" type="text" required autocomplete="organization" placeholder="z.B. FF Musterdorf" value="{form_data.get('verein_name', '')}">
+  <input name="verein_name" type="text" required autocomplete="organization" placeholder="z.B. FF Musterdorf" value="{html.escape(form_data.get('verein_name', ''))}">
   <label>Rubrik</label>
   <select name="rubrik" required>
     <option value="">– bitte wählen –</option>
     {rubrik_opts}
   </select>
   <label>Heimatort</label>
-  <input name="heimatort" type="text" required placeholder="z.B. Musterdorf" value="{form_data.get('heimatort', '')}">
+  <input name="heimatort" type="text" required placeholder="z.B. Musterdorf" value="{html.escape(form_data.get('heimatort', ''))}">
   <label>PLZ <span class="hint">(optional – für automatische Ortszuordnung)</span></label>
-  <input name="plz" type="text" inputmode="numeric" maxlength="5" placeholder="z.B. 83308" value="{form_data.get('plz', '')}">
+  <input name="plz" type="text" inputmode="numeric" maxlength="5" placeholder="z.B. 83308" value="{html.escape(form_data.get('plz', ''))}">
   <label>E-Mail (Ansprechpartner)</label>
-  <input name="email" type="text" inputmode="email" autocorrect="off" autocapitalize="none" required autocomplete="email" placeholder="vorstand@beispiel.de" value="{form_data.get('email', '')}">
+  <input name="email" type="text" inputmode="email" autocorrect="off" autocapitalize="none" required autocomplete="email" placeholder="vorstand@beispiel.de" value="{html.escape(form_data.get('email', ''))}">
   <label>Telefon Ansprechpartner <span class="hint">(optional – für Rückfragen bei der Freigabe)</span></label>
-  <input name="telefon" type="tel" autocomplete="tel" placeholder="z.B. 0172 1234567" value="{form_data.get('telefon', '')}">
+  <input name="telefon" type="tel" autocomplete="tel" placeholder="z.B. 0172 1234567" value="{html.escape(form_data.get('telefon', ''))}">
   <label>Passwort <span class="hint">(mind. 8 Zeichen)</span></label>
   <input name="password" type="password" required autocomplete="new-password">
   <label>Passwort wiederholen</label>
@@ -423,7 +442,7 @@ def login_verein_waehlen():
     options = "".join(
         f"""<form method="post" style="margin:.5rem 0">
   <input type="hidden" name="user_id" value="{uid}">
-  <button class="btn" type="submit">{verein_name}</button>
+  <button class="btn" type="submit">{html.escape(verein_name)}</button>
 </form>"""
         for uid, verein_name in choices
     )
@@ -489,13 +508,14 @@ def reset_password():
             body = f'<p class="err">Der Reset-Link ist abgelaufen.</p><a class="btn" href="/verein/passwort-vergessen">Neuen Link anfordern</a>'
             return _page("Link abgelaufen", body), 400
 
+        pw_error = ""
         if request.method == "POST":
             pw = request.form.get("password", "")
             pw2 = request.form.get("password2", "")
             if len(pw) < 8:
-                pass
+                pw_error = "Passwort muss mindestens 8 Zeichen haben."
             elif pw != pw2:
-                pass
+                pw_error = "Passwörter stimmen nicht überein."
             else:
                 conn.execute(
                     "UPDATE vk_users SET password_hash=?, reset_token=NULL, reset_token_expires=NULL, login_attempts=0, locked_until=NULL WHERE id=?",
@@ -503,8 +523,9 @@ def reset_password():
                 )
                 return redirect("/verein/login?hint=reset")
 
-    form = f"""<form method="post">
-<input type="hidden" name="token" value="{token}">
+    form = f"""{'<p class="err">'+pw_error+'</p>' if pw_error else ''}
+<form method="post">
+<input type="hidden" name="token" value="{html.escape(token)}">
 <label>Neues Passwort <span class="hint">(mind. 8 Zeichen)</span></label>
 <input name="password" type="password" required autocomplete="new-password">
 <label>Passwort wiederholen</label>

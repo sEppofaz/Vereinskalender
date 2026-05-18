@@ -38,7 +38,7 @@ def _load_data() -> dict:
 def _get_verein_termine(verein_key: str) -> list:
     data = _load_data()
     alle = data.get(verein_key, [])
-    return [t for t in alle if not t.get("deleted")]
+    return [t for t in alle if not t.get("geloescht") and not t.get("deleted")]
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -225,7 +225,7 @@ def termin_edit(user, termin_id):
     verein_key = user["verein_key"]
     data = _load_data()
     termine_list = data.get(verein_key, [])
-    termin = next((t for t in termine_list if t.get("id") == termin_id and not t.get("deleted")), None)
+    termin = next((t for t in termine_list if t.get("id") == termin_id and not t.get("geloescht") and not t.get("deleted")), None)
 
     if not termin:
         return redirect("/verein/dashboard")
@@ -236,7 +236,7 @@ def termin_edit(user, termin_id):
             def del_updater(d):
                 for t in d.get(verein_key, []):
                     if t.get("id") == termin_id:
-                        t["deleted"] = True
+                        t["geloescht"] = True
                         t["geloescht_von"] = user["email"]
                         t["geloescht_am"] = datetime.utcnow().isoformat()[:19]
                 return d

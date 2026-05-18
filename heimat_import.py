@@ -21,12 +21,12 @@ from pathlib import Path
 sys.path.insert(0, "/opt/rename-webhook")
 from shared.secrets import load_secrets
 from shared.telegram import send_telegram, send_telegram_inline
+from shared.kalender_store import KalenderStore
 
 GEMEINDEN_FILE      = Path("/opt/rename-webhook/heimat_gemeinden.json")
 VEREINSTERMINE_FILE = Path("/opt/rename-webhook/vereinstermine.json")
 PENDING_DIR         = Path("/opt/rename-webhook/imports")
 LOG_FILE            = "/var/log/pka-heimat.log"
-API_BASE            = "https://www.heimat-info.de/embeddings/events/v1/"
 API_EXPORT          = "https://heimatinfo-api-platform.azurewebsites.net"
 API_EXPORT_HEADERS  = {
     "Origin":     "https://www.heimat-info.de",
@@ -35,13 +35,6 @@ API_EXPORT_HEADERS  = {
 }
 
 _org_cache: dict[str, str] = {}
-
-MONATE     = {"Januar":1,"Februar":2,"März":3,"April":4,"Mai":5,"Juni":6,
-               "Juli":7,"August":8,"September":9,"Oktober":10,"November":11,"Dezember":12}
-KATEGORIEN = {"Vereine","Kirchen","Feuerwehren","Gastro / Gewerbe",
-               "Veranstaltungen","Sport","Kultur","Sonstiges","Gemeinde","Freizeit"}
-WOCHENTAGE = {"So.","Sa.","Mo.","Di.","Mi.","Do.","Fr."}
-SKIP_TEXT  = {"zum Kalender hinzufügen","mehr anzeigen"}
 
 
 def _slugify(name: str) -> str:
@@ -58,59 +51,6 @@ def _log(msg: str) -> None:
     print(line)
     with open(LOG_FILE, "a") as f:
         f.write(line + "\n")
-
-
-def _parse_events(html_content: str, heute: str) -> list[dict]:
-    events     = []
-    events_raw = re.findall(
-        r'<div class="event mb-3"[^>]*>(.*?)(?=<div class="event mb-3"|$)',
-        html_content, re.S)
-
-    for e in events_raw:
-        m_tag   = re.search(r'class="date-number"[^>]*>(\d+)<', e)
-        m_monat = re.search(r'class="date-month"[^>]*>(\w+)<',  e)
-        m_jahr  = re.search(r'class="date-year"[^>]*>(\d{4})<', e)
-        if not (m_tag and m_monat and m_jahr):
-            continue
-        monat_nr = MONATE.get(m_monat.group(1), 0)
-        if not monat_nr:
-            continue
-        datum = f'{m_jahr.group(1)}-{monat_nr:02d}-{int(m_tag.group(1)):02d}'
-        if datum < heute:
-            continue
-
-        m_uhr   = re.search(r'(\d{2}:\d{2}) Uhr', e)
-        uhrzeit = m_uhr.group(1) if m_uhr else ""
-
-        texts = []
-        for t in re.findall(r'>([^<>\n]{3,200})<', e):
-            t = htmlmod.unescape(t.strip())
-            if (not t or t in SKIP_TEXT or t in WOCHENTAGE
-                    or t == m_monat.group(1)
-                    or re.match(r'^\d{1,4}$', t)
-                    or "Uhr" in t):
-                continue
-            texts.append(t)
-
-        filtered    = [t for t in texts if t not in KATEGORIEN]
-        verein      = filtered[0] if filtered else ""
-        bezeichnung = filtered[1] if len(filtered) > 1 else ""
-        ort         = filtered[2] if len(filtered) > 2 else ""
-
-        if bezeichnung:
-            events.append({"datum": datum, "uhrzeit": uhrzeit,
-                           "bezeichnung": bezeichnung, "ort": ort,
-                           "_verein_name": verein})
-    return events
-
-
-def _fetch(c_id: str) -> str | None:
-    try:
-        with urllib.request.urlopen(f"{API_BASE}?c={c_id}", timeout=15) as r:
-            return r.read().decode("utf-8")
-    except Exception as e:
-        _log(f"  ❌ Fetch-Fehler c={c_id}: {e}")
-        return None
 
 
 def _fetch_org_name(org_id: str) -> str:
@@ -366,7 +306,7 @@ def do_import(uid: str, verein_keys: list | None = None) -> str:
         existing.add((e["datum"], e["uhrzeit"], e["bezeichnung"].strip().lower()))
         neu += 1
 
-    VEREINSTERMINE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    KalenderStore.update(lambda d: d.clear() or d.update(data))
     _log(f"✅ Import: {neu} neu, {duplikat} Duplikate übersprungen")
 
     # Pending-Datei: bei Teilimport Rest behalten, sonst löschen
@@ -622,132 +562,6 @@ def _download_dropbox(token: str, path: str) -> bytes:
         return r.read()
 
 
-def _generate_excel(events: list[dict], uid: str) -> bytes:
-    import io
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Vorschau"
-
-    headers = ["importieren", "datum", "uhrzeit", "bezeichnung",
-               "veranstalter", "ort", "ortschaft", "gemeinde", "landkreis", "quelle_url"]
-    ws.append(headers)
-    header_fill = PatternFill("solid", fgColor="6D28D9")
-    header_font = Font(bold=True, color="FFFFFF")
-    for cell in ws[1]:
-        cell.fill      = header_fill
-        cell.font      = header_font
-        cell.alignment = Alignment(horizontal="center")
-
-    for e in (e for e in events if e.get("_neu", False)):
-        ws.append([
-            "ja",
-            e["datum"],
-            e.get("uhrzeit", ""),
-            e["bezeichnung"],
-            e.get("_verein_name", ""),
-            e.get("ort", ""),
-            e.get("ortschaft", "") or e.get("_gemeinde", ""),
-            e.get("_gemeinde", ""),
-            e.get("_landkreis", ""),
-            e.get("quelle_url", ""),
-        ])
-
-    for i, w in enumerate([12, 12, 8, 40, 30, 25, 20, 15, 20, 40], 1):
-        ws.column_dimensions[ws.cell(1, i).column_letter].width = w
-
-    ws_meta = wb.create_sheet("Meta")
-    ws_meta.append(["uid",     uid])
-    ws_meta.append(["erzeugt", datetime.now().isoformat(timespec="seconds")])
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
-def cmd_excel(secrets: dict) -> None:
-    """Liest bearbeitete Excel von Dropbox, aktualisiert Pending-Datei, sendet neue Vorschau."""
-    import io
-    from openpyxl import load_workbook
-
-    token   = secrets["TOKEN"]
-    chat_id = secrets["CHAT_ID"]
-
-    try:
-        db_token = _get_dropbox_token(secrets)
-        raw      = _download_dropbox(db_token, DROPBOX_EXCEL_PATH)
-    except Exception as exc:
-        send_telegram(token, chat_id, f"❌ Dropbox-Download fehlgeschlagen: {exc}")
-        return
-
-    try:
-        wb     = load_workbook(io.BytesIO(raw))
-        ws     = wb["Vorschau"]
-        ws_m   = wb["Meta"]
-        uid    = ws_m.cell(1, 2).value
-    except Exception as exc:
-        send_telegram(token, chat_id, f"❌ Excel-Fehler: {exc}")
-        return
-
-    if not uid:
-        send_telegram(token, chat_id, "❌ UID nicht im Meta-Sheet gefunden.")
-        return
-
-    pending_file = PENDING_DIR / f"heimat_pending_{uid}.json"
-    if not pending_file.exists():
-        send_telegram(token, chat_id,
-                      f"⚠️ Pending-Datei nicht gefunden (uid={uid}).\n"
-                      "Bitte /heimat erneut ausführen.")
-        return
-
-    pending = json.loads(pending_file.read_text())
-    events  = pending["events"]
-
-    # Welche Events hat der User auf "ja" gelassen? Key: (datum, uhrzeit, bezeichnung, gemeinde)
-    behalten: set[tuple] = set()
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row[0]:
-            continue
-        if str(row[0]).strip().lower() == "ja":
-            behalten.add((
-                str(row[1] or "").strip(),
-                str(row[2] or "").strip(),
-                str(row[3] or "").strip(),
-                str(row[7] or "").strip(),
-            ))
-
-    for e in events:
-        key    = (e["datum"], e.get("uhrzeit", ""), e["bezeichnung"], e.get("_gemeinde", ""))
-        e["_neu"] = key in behalten
-
-    pending_file.write_text(json.dumps(pending, ensure_ascii=False))
-
-    neu_gesamt = sum(1 for e in events if e["_neu"])
-    dup_gesamt = len(events) - neu_gesamt
-    neue       = [e for e in events if e["_neu"]]
-
-    def _vorschau_zeile(e: dict) -> str:
-        veranst = e.get("_verein_name", "")
-        ort     = e.get("ort", "")
-        teile   = [e["bezeichnung"][:30]]
-        if veranst: teile.append(veranst[:25])
-        if ort:     teile.append(ort[:25])
-        return f"• {e['datum']} {e.get('uhrzeit',''):5} – {' · '.join(teile)} [{e['_gemeinde']}]"
-
-    vorschau = "\n".join(_vorschau_zeile(e) for e in neue[:15])
-    if len(neue) > 15:
-        vorschau += f"\n… +{len(neue)-15} weitere"
-
-    msg = (f"📊 Excel eingelesen\n"
-           f"✅ Zu importieren: {neu_gesamt} | ❌ Ausgeschlossen: {dup_gesamt}\n\n"
-           + (vorschau if neue else "Keine Termine zum Importieren ausgewählt."))
-
-    send_telegram_inline(token, chat_id, msg, [[
-        {"text": f"✅ {neu_gesamt} importieren", "callback_data": f"heimat_ok:{uid}"},
-        {"text": "❌ Verwerfen",                 "callback_data": f"heimat_no:{uid}"},
-    ]])
 
 
 def fetch_and_save_pending_for_url(url: str) -> dict:
@@ -787,8 +601,6 @@ def main() -> None:
     secrets = load_secrets()
     if len(sys.argv) >= 3 and sys.argv[1] == "--add":
         cmd_add(sys.argv[2], secrets)
-    elif len(sys.argv) >= 2 and sys.argv[1] == "--excel":
-        cmd_excel(secrets)
     else:
         cmd_import(secrets)
 
