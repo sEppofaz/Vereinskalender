@@ -11,6 +11,7 @@ from flask import Blueprint, make_response, redirect, request
 
 from shared.vk_db import SESSION_TIMEOUT_HOURS, create_session, db_conn, delete_session, get_session_user, init_db
 from shared.kalender_core import lookup_plz, _make_verein_key
+from shared.csrf import csrf_field, get_csrf_token, validate_csrf
 from shared.vk_mail import (
     send_rejected_email,
     send_reset_email,
@@ -162,6 +163,8 @@ def register():
     error = ""
     form_data: dict = {}
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         verein_name = request.form.get("verein_name", "").strip()
         email       = request.form.get("email", "").strip().lower()
         pw          = request.form.get("password", "")
@@ -232,10 +235,12 @@ Danach prüft der Administrator deine Anfrage (in der Regel innerhalb eines Tage
         f'<option value="{r}"{" selected" if form_data.get("rubrik") == r else ""}>{r}</option>'
         for r in RUBRIKEN
     )
+    tok = get_csrf_token()
     form = f"""
 <p style="color:#aeaeb2;font-size:.9rem">Trage deinen Verein im Vereinskalender ein.</p>
 {'<p class="err">'+error+'</p>' if error else ''}
 <form method="post" autocomplete="on">
+  {csrf_field(tok)}
   <label>Vereinsname</label>
   <input name="verein_name" type="text" required autocomplete="organization" placeholder="z.B. FF Musterdorf" value="{html.escape(form_data.get('verein_name', ''))}">
   <label>Rubrik</label>
@@ -295,6 +300,8 @@ def verify_email():
 @auth_bp.route("/api/auth/resend-verify", methods=["GET", "POST"])
 def resend_verify():
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         email = request.form.get("email", "").strip().lower()
         tokens_to_send = []
         with db_conn() as conn:
@@ -313,7 +320,8 @@ def resend_verify():
             send_verify_email(email, token)
         body = '<p class="ok">Falls die E-Mail existiert und noch nicht bestätigt ist, wurde ein neuer Link verschickt.</p><div class="spam-hint">📬 Bitte auch im <strong>Spam-Ordner</strong> nachsehen.</div>' + _BACK
         return _page("Link verschickt", body)
-    form = f'<form method="post"><label>E-Mail-Adresse</label><input name="email" type="email" required><button class="btn" type="submit">Neuen Link anfordern</button></form>{_BACK}'
+    tok = get_csrf_token()
+    form = f'<form method="post">{csrf_field(tok)}<label>E-Mail-Adresse</label><input name="email" type="email" required><button class="btn" type="submit">Neuen Link anfordern</button></form>{_BACK}'
     return _page("Bestätigungslink anfordern", form)
 
 
@@ -332,6 +340,8 @@ def login():
     login_user_id = None
 
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         email = request.form.get("email", "").strip().lower()
         pw    = request.form.get("password", "")
         now   = datetime.utcnow()
@@ -399,10 +409,12 @@ def login():
             resp.set_cookie("vk_session", session_token, httponly=True, samesite="Lax", max_age=SESSION_TIMEOUT_HOURS * 3600)
             return resp
 
+    tok = get_csrf_token()
     form = f"""
 {hint_msg}
 {'<p class="err">'+error+'</p>' if error else ''}
 <form method="post" autocomplete="on">
+  {csrf_field(tok)}
   <label>E-Mail</label>
   <input name="email" type="email" required autocomplete="email">
   <label>Passwort</label>
@@ -425,6 +437,8 @@ def login_verein_waehlen():
         return redirect("/verein/login")
 
     if request.method == "POST":
+        if not validate_csrf():
+            return redirect("/verein/login")
         try:
             chosen_id = int(request.form.get("user_id", ""))
         except ValueError:
@@ -439,8 +453,10 @@ def login_verein_waehlen():
         return resp
 
     # GET: Auswahl-Seite anzeigen
+    tok = get_csrf_token()
     options = "".join(
         f"""<form method="post" style="margin:.5rem 0">
+  {csrf_field(tok)}
   <input type="hidden" name="user_id" value="{uid}">
   <button class="btn" type="submit">{html.escape(verein_name)}</button>
 </form>"""
@@ -471,6 +487,8 @@ def logout():
 @auth_bp.route("/verein/passwort-vergessen", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         email = request.form.get("email", "").strip().lower()
         tokens_to_send = []
         with db_conn() as conn:
@@ -489,7 +507,8 @@ def forgot_password():
             send_reset_email(email, token)
         body = '<p class="ok">Falls diese E-Mail registriert ist, wurde ein Reset-Link verschickt.</p><div class="spam-hint">📬 Bitte auch im <strong>Spam-Ordner</strong> nachsehen.</div>' + _BACK
         return _page("Link verschickt", body)
-    form = f'<p style="color:#aeaeb2">Gib deine E-Mail-Adresse ein. Du erhältst einen Link zum Passwort-Zurücksetzen.</p><form method="post"><label>E-Mail</label><input name="email" type="email" required><button class="btn" type="submit">Reset-Link anfordern</button></form>{_BACK}'
+    tok = get_csrf_token()
+    form = f'<p style="color:#aeaeb2">Gib deine E-Mail-Adresse ein. Du erhältst einen Link zum Passwort-Zurücksetzen.</p><form method="post">{csrf_field(tok)}<label>E-Mail</label><input name="email" type="email" required><button class="btn" type="submit">Reset-Link anfordern</button></form>{_BACK}'
     return _page("Passwort vergessen", form)
 
 
@@ -510,6 +529,8 @@ def reset_password():
 
         pw_error = ""
         if request.method == "POST":
+            if not validate_csrf():
+                return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
             pw = request.form.get("password", "")
             pw2 = request.form.get("password2", "")
             if len(pw) < 8:
@@ -523,8 +544,10 @@ def reset_password():
                 )
                 return redirect("/verein/login?hint=reset")
 
+    tok = get_csrf_token()
     form = f"""{'<p class="err">'+pw_error+'</p>' if pw_error else ''}
 <form method="post">
+{csrf_field(tok)}
 <input type="hidden" name="token" value="{html.escape(token)}">
 <label>Neues Passwort <span class="hint">(mind. 8 Zeichen)</span></label>
 <input name="password" type="password" required autocomplete="new-password">

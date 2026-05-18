@@ -14,6 +14,7 @@ from shared.kalender_core import (
     VEREINSTERMINE_FILE, _HEIC_SUPPORTED, _do_save_import,
     cleanup_stale_pending, import_pdf_bytes, lookup_plz, parse_excel_bytes,
 )
+from shared.csrf import csrf_field, get_csrf_token, validate_csrf
 from shared.vk_db import (
     db_conn, get_session_user, log_audit,
     get_upload_count, increment_upload_quota,
@@ -164,6 +165,8 @@ def termin_neu(user):
 
     error = ""
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         datum = request.form.get("datum", "").strip()
         uhrzeit = request.form.get("uhrzeit", "").strip()
         bezeichnung = request.form.get("bezeichnung", "").strip()
@@ -199,9 +202,11 @@ def termin_neu(user):
             log_audit("erstellt", termin_id, verein_key, user["id"])
             return redirect("/verein/dashboard")
 
+    tok = get_csrf_token()
     form = f"""
 {'<p class="err">'+error+'</p>' if error else ''}
 <form method="post" autocomplete="off">
+  {csrf_field(tok)}
   <label>Datum *</label>
   <input name="datum" type="date" required value="{date.today().isoformat()}">
   <label>Uhrzeit</label>
@@ -233,6 +238,8 @@ def termin_edit(user, termin_id):
         return redirect("/verein/dashboard")
 
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         aktion = request.form.get("aktion", "")
         if aktion == "loeschen":
             def del_updater(d):
@@ -265,8 +272,10 @@ def termin_edit(user, termin_id):
                 log_audit("geaendert", termin_id, verein_key, user["id"])
                 return redirect("/verein/dashboard")
 
+    tok = get_csrf_token()
     form = f"""
 <form method="post">
+  {csrf_field(tok)}
   <label>Datum</label>
   <input name="datum" type="date" required value="{termin.get('datum','')}">
   <label>Uhrzeit</label>
@@ -279,6 +288,7 @@ def termin_edit(user, termin_id):
 </form>
 <hr>
 <form method="post" onsubmit="return confirm('Termin wirklich löschen?')">
+  {csrf_field(tok)}
   <button class="btn btn-danger" type="submit" name="aktion" value="loeschen">🗑 Termin löschen</button>
 </form>
 {_BACK_DASH}"""
@@ -294,6 +304,8 @@ def change_password(user):
     error = ""
     success = ""
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         alt = request.form.get("password_alt", "")
         neu = request.form.get("password_neu", "")
         neu2 = request.form.get("password_neu2", "")
@@ -314,10 +326,12 @@ def change_password(user):
                 )
                 success = "Passwort erfolgreich geändert."
 
+    tok = get_csrf_token()
     form = f"""
 {'<p class="err">'+error+'</p>' if error else ''}
 {'<p class="ok">'+success+'</p>' if success else ''}
 <form method="post" autocomplete="off">
+  {csrf_field(tok)}
   <label>Aktuelles Passwort</label>
   <input name="password_alt" type="password" required autocomplete="current-password">
   <label>Neues Passwort</label>
@@ -344,6 +358,8 @@ def mitglieder(user):
     error = ""
     success = ""
     if request.method == "POST":
+        if not validate_csrf():
+            return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
         aktion = request.form.get("aktion", "")
         if aktion == "einladen":
             email = request.form.get("email", "").strip().lower()
@@ -388,12 +404,13 @@ def mitglieder(user):
             (user["verein_id"],),
         ).fetchall()
 
+    tok = get_csrf_token()
     rows = ""
     for m in members:
         status = "✅" if m["aktiv"] else "⏳ Einladung ausstehend"
         remove_btn = ""
         if m["role"] == "member":
-            remove_btn = f'<form method="post" style="display:inline"><input type="hidden" name="aktion" value="entfernen"><input type="hidden" name="member_id" value="{m["id"]}"><button style="background:none;border:none;color:#ff453a;cursor:pointer;font-size:.9rem" type="submit">Entfernen</button></form>'
+            remove_btn = f'<form method="post" style="display:inline">{csrf_field(tok)}<input type="hidden" name="aktion" value="entfernen"><input type="hidden" name="member_id" value="{m["id"]}"><button style="background:none;border:none;color:#ff453a;cursor:pointer;font-size:.9rem" type="submit">Entfernen</button></form>'
         rows += f'<div class="card"><div style="display:flex;justify-content:space-between"><div><div>{m["email"]}</div><div style="color:#aeaeb2;font-size:.82rem">{m["role"]} · {status}</div></div><div>{remove_btn}</div></div></div>'
 
     invite_form = ""
@@ -402,6 +419,7 @@ def mitglieder(user):
 {'<p class="err">'+error+'</p>' if error else ''}
 {'<p class="ok">'+success+'</p>' if success else ''}
 <form method="post">
+  {csrf_field(tok)}
   <input type="hidden" name="aktion" value="einladen">
   <label>E-Mail-Adresse des neuen Mitglieds</label>
   <input name="email" type="email" required placeholder="mitglied@beispiel.de">
@@ -442,6 +460,8 @@ def einladung():
             return redirect("/verein/login")
 
         if request.method == "POST":
+            if not validate_csrf():
+                return _page("Fehler", '<p class="err">Ungültige Anfrage. Bitte Seite neu laden.</p>'), 403
             pw = request.form.get("password", "")
             pw2 = request.form.get("password2", "")
             if len(pw) < 8:
@@ -456,10 +476,12 @@ def einladung():
                 )
                 return redirect("/verein/login")
 
+    tok = get_csrf_token()
     form = f"""
 <p>Lege dein Passwort fest, um die Einladung anzunehmen.</p>
 {'<p class="err">'+error+'</p>' if error else ''}
 <form method="post">
+  {csrf_field(tok)}
   <input type="hidden" name="token" value="{token}">
   <label>Passwort <span class="hint">(mind. 8 Zeichen)</span></label>
   <input name="password" type="password" required autocomplete="new-password">
