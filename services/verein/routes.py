@@ -171,6 +171,8 @@ def termin_neu(user):
 
         if not datum or not bezeichnung:
             error = "Datum und Bezeichnung sind Pflichtfelder."
+        elif not re.match(r"^\d{4}-\d{2}-\d{2}$", datum):
+            error = "Datum muss im Format YYYY-MM-DD sein."
         else:
             termin_id = str(uuid.uuid4())[:8]
             neuer_termin = {
@@ -248,7 +250,7 @@ def termin_edit(user, termin_id):
             uhrzeit = request.form.get("uhrzeit", "").strip()
             bezeichnung = request.form.get("bezeichnung", "").strip()
             ort = request.form.get("ort", "").strip()
-            if datum and bezeichnung:
+            if datum and bezeichnung and re.match(r"^\d{4}-\d{2}-\d{2}$", datum):
                 def edit_updater(d):
                     for t in d.get(verein_key, []):
                         if t.get("id") == termin_id:
