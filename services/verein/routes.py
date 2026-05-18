@@ -12,7 +12,7 @@ from flask import Blueprint, make_response, redirect, request
 from shared.kalender_store import KalenderStore
 from shared.kalender_core import (
     VEREINSTERMINE_FILE, _HEIC_SUPPORTED, _do_save_import,
-    import_pdf_bytes, lookup_plz, parse_excel_bytes,
+    cleanup_stale_pending, import_pdf_bytes, lookup_plz, parse_excel_bytes,
 )
 from shared.vk_db import (
     db_conn, get_session_user, log_audit,
@@ -648,6 +648,7 @@ def confirm_upload(user):
         return redirect("/verein/dashboard")
 
     import_id    = request.form.get("import_id", "")
+    cleanup_stale_pending()
     pending_path = Path(f"/tmp/vk_pending_{import_id}.json")
 
     if not pending_path.exists():

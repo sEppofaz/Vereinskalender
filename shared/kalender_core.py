@@ -357,3 +357,13 @@ def parse_excel_bytes(file_bytes: bytes) -> list:
     wb.close()
     log(f"📊  Excel-Import: {len(termine)} Termine geparst")
     return termine
+
+
+def cleanup_stale_pending(max_age_s: int = 86400) -> None:
+    cutoff = time.time() - max_age_s
+    for p in Path("/tmp").glob("vk_pending_*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass

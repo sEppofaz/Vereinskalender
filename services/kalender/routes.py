@@ -3,6 +3,7 @@ import ipaddress
 import json
 import os
 import re
+import threading
 import time
 import uuid as _uuid
 from datetime import date, datetime, timedelta, timezone as _tz
@@ -24,6 +25,7 @@ from shared.kalender_core import (
     _PG_LABELS,
     _do_save_import,
     _make_verein_key,
+    cleanup_stale_pending,
     find_similar_keys,
     import_pdf_bytes,
     log,
@@ -33,8 +35,9 @@ from shared.kalender_core import (
 
 kalender_bp = Blueprint("kalender", __name__)
 
-UPLOAD_TOKEN        = os.environ.get("UPLOAD_TOKEN", "")
+UPLOAD_TOKEN         = os.environ.get("UPLOAD_TOKEN", "")
 VKO_MAINTENANCE_FILE = Path("/opt/rename-webhook/vko_maintenance")
+_import_lock         = threading.Lock()
 
 _MAINTENANCE_HTML = """<!DOCTYPE html>
 <html lang="de">
@@ -207,6 +210,7 @@ def upload_kalender():
             neue_vereine_ohne_ort.append(entry)
 
         if neue_vereine_ohne_ort:
+            cleanup_stale_pending()
             import_id = str(_uuid.uuid4())
             form_plz  = request.form.get("plz", "").strip()
             Path(f"/tmp/vk_pending_{import_id}.json").write_text(
@@ -578,6 +582,7 @@ def api_confirm_import():
     verein_ortschaften = {k: v for k, v in (body.get("verein_ortschaften") or {}).items() if v and v.strip()}
     key_remappings     = {k: v for k, v in (body.get("key_remappings") or {}).items() if k and v}
 
+    cleanup_stale_pending()
     pending_path = Path(f"/tmp/vk_pending_{import_id}.json")
     if not pending_path.exists():
         return json.dumps({"error": "Import nicht gefunden oder abgelaufen"}), 404, {"Content-Type": "application/json"}
@@ -647,7 +652,7 @@ def api_vereine_get():
     for vkey, events in raw.items():
         if vkey.startswith("_") or not isinstance(events, list):
             continue
-        n_termine[vkey] = sum(1 for t in events if not t.get("geloescht"))
+        n_termine[vkey] = sum(1 for t in events if not t.get("geloescht") and not t.get("deleted"))
     for r in result:
         r["nTermine"] = n_termine.get(r["key"], 0)
     result.sort(key=lambda x: x["name"].lower())
@@ -1275,7 +1280,6 @@ def api_admin_importe_reject(uid):
 def api_admin_importe_trigger():
     import ipaddress as _ip
     import socket as _socket
-    import threading
     import urllib.parse as _up
 
     token = request.headers.get("X-Upload-Token", "")
@@ -1306,6 +1310,10 @@ def api_admin_importe_trigger():
             return json.dumps({"error": "DNS-Auflösung fehlgeschlagen"}), 400, {
                 "Content-Type": "application/json"}
 
+    if not _import_lock.acquire(blocking=False):
+        return json.dumps({"error": "Import läuft bereits – bitte warten"}), 409, {
+            "Content-Type": "application/json"}
+
     def _run():
         try:
             import importlib.util as _ilu
@@ -1320,6 +1328,8 @@ def api_admin_importe_trigger():
             log(f"✅  Admin-Trigger: {result}")
         except Exception as e:
             log(f"❌  Admin-Trigger fehlgeschlagen: {e}")
+        finally:
+            _import_lock.release()
 
     threading.Thread(target=_run, daemon=True).start()
     return json.dumps({"ok": True, "message": "Import gestartet – Tab in ca. 30 Sek. neu laden"}),\
