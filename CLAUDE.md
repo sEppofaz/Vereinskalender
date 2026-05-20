@@ -188,6 +188,16 @@ Alle Jobs als `root`-Crontab. Timezone: `Europe/Berlin`. Logs: `/var/log/pka-*.l
 - **Backfill:** `python3 stats_collector.py --backfill 90`
 - **iCal-Feed-Tracking:** `_track_ical_request()` in `services/kalender/routes.py`
 
+### GeoIP-Herkunftsstatistik
+
+- **DB:** `page_stats_geo` (datum, land, stadt, besucher) – unique Besucher pro Geo-Kombination
+- **Lookup:** `GeoLite2-City.mmdb` unter `/opt/rename-webhook/` – deutsche Namen via `.names.get("de")`
+- **DSGVO:** GeoLookup passiert **vor** der IP-Anonymisierung; nur aggregierte Geo-Daten gespeichert
+- **API:** `GET /api/admin/stats/geo?d=7|30|365` → `{laender, staedte_de}`
+- **Stadt:** Nur für Deutschland (`iso_code == "DE"`)
+- **Auto-Update:** `update_geoip.sh` monatlich am 1. um 04:00 (Cron), Log: `/var/log/pka-geoip.log`
+- **Key:** `GEOIP_LICENSE_KEY` in `/etc/pka/secrets.env` (MaxMind-Account erforderlich)
+
 ---
 
 ## Privater Telegram-Bot (services/telegram/routes.py)
