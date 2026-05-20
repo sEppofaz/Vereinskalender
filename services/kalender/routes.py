@@ -130,7 +130,7 @@ def manifest_admin_json():
     return json.dumps({
         "name":             "VKO Admin",
         "short_name":       "VKO Admin",
-        "start_url":        "/#admin",
+        "start_url":        "/admin",
         "display":          "standalone",
         "background_color": "#1c1c1e",
         "theme_color":      "#6D28D9",

@@ -558,7 +558,7 @@ let activeFavs=(()=>{
   if(stored===null)return new Set(favorites.map(f=>f.type+":"+String(f.key)));
   try{return new Set(JSON.parse(stored));}catch(e){return new Set(favorites.map(f=>f.type+":"+String(f.key)));}
 })();
-const ADMIN=window.location.hash==="#admin";
+const ADMIN=window.location.hash==="#admin"||window.location.pathname==="/admin";
 const RUBRIK_KEY="vk_rubrik";
 let aktRubrikSet=(()=>{try{const v=localStorage.getItem(RUBRIK_KEY);if(!v)return new Set();const p=JSON.parse(v);return new Set(Array.isArray(p)?p:(p&&p!=="alle"?[p]:[]));}catch(e){return new Set();}})();
 const STATE_KEY="vk_state";
@@ -1373,9 +1373,12 @@ async function doRefresh(){
   try{await load();}finally{btn.classList.remove("spin");}
 }
 
-/* ── Admin-Modus (vereinskalender.online#admin) ── */
+/* ── Admin-Modus ── */
 if(ADMIN){
   document.getElementById("admin-import-btn").style.display="";
+  document.title="VKO Admin";
+  const tc=document.querySelector('meta[name="theme-color"]');
+  if(tc)tc.setAttribute("content","#6D28D9");
 }
 
 /* ── Vereinsadmin-Stift-Icon ── */
