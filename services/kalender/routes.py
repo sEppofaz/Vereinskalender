@@ -467,6 +467,49 @@ def api_admin_stats_hourly():
     }
 
 
+@kalender_bp.route("/api/admin/stats/geo", methods=["GET"])
+def api_admin_stats_geo():
+    token = request.headers.get("X-Upload-Token", "")
+    if not UPLOAD_TOKEN or token != UPLOAD_TOKEN:
+        return json.dumps({"error": "Nicht autorisiert"}), 401, {"Content-Type": "application/json"}
+
+    try:
+        d = int(request.args.get("d", "30"))
+    except ValueError:
+        d = 30
+    d = min(max(d, 1), 365)
+
+    from datetime import date as _date
+    von = (_date.today() - timedelta(days=d)).isoformat()
+
+    laender = []
+    staedte_de = []
+    try:
+        with db_conn() as conn:
+            rows = conn.execute(
+                "SELECT land, SUM(besucher) AS n FROM page_stats_geo "
+                "WHERE datum > ? GROUP BY land ORDER BY n DESC LIMIT 20",
+                (von,),
+            ).fetchall()
+            laender = [{"land": r["land"], "besucher": r["n"]} for r in rows]
+
+            rows = conn.execute(
+                "SELECT stadt, SUM(besucher) AS n FROM page_stats_geo "
+                "WHERE datum > ? AND land = 'Deutschland' AND stadt != '' "
+                "GROUP BY stadt ORDER BY n DESC LIMIT 20",
+                (von,),
+            ).fetchall()
+            staedte_de = [{"stadt": r["stadt"], "besucher": r["n"]} for r in rows]
+    except Exception:
+        pass
+
+    return json.dumps({"laender": laender, "staedte_de": staedte_de, "tage": d},
+                      ensure_ascii=False), 200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+    }
+
+
 @kalender_bp.route("/api/admin/stats", methods=["GET"])
 def api_admin_stats():
     token = request.headers.get("X-Upload-Token", "")

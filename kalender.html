@@ -1631,6 +1631,17 @@ async function loadStats(){
         </div>
         <div id="sta-hourly"><div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div></div>
       </div>
+      <div id="sta-geo-wrap" style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-weight:600;color:var(--text1);font-size:14px">&#127758; Besucher nach Herkunft</span>
+          <div style="display:flex;gap:4px">
+            <button id="geo-btn-7"   onclick="loadGeo(7)"   style="padding:3px 9px;border:1.5px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text3);font-size:12px;cursor:pointer">7T</button>
+            <button id="geo-btn-30"  onclick="loadGeo(30)"  style="padding:3px 9px;border:1.5px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text3);font-size:12px;cursor:pointer">30T</button>
+            <button id="geo-btn-365" onclick="loadGeo(365)" style="padding:3px 9px;border:1.5px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text3);font-size:12px;cursor:pointer">1J</button>
+          </div>
+        </div>
+        <div id="sta-geo"><div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div></div>
+      </div>
       <div style="background:var(--card);border:1.5px solid var(--border2);border-radius:12px;padding:14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
           <span style="color:var(--text2);font-size:14px">&#127974; Vereine</span>
@@ -1651,6 +1662,7 @@ async function loadStats(){
       <div style="text-align:center;font-size:11px;color:var(--text3)">Stand: ${escHtml(data.timestamp)}</div>`;
     loadChart(_chartPeriod);
     loadHourlyChart();
+    loadGeo(_geoPeriod);
   }catch(e){
     el.innerHTML='<div style="color:#ff3b30;padding:20px;text-align:center">Fehler beim Laden der Statistik</div>';
   }
@@ -1675,6 +1687,62 @@ async function loadChart(d){
     renderChart(el,data.tage,d);
   }catch(e){
     el.innerHTML='<div style="color:#ff3b30;text-align:center;font-size:12px">Fehler beim Laden</div>';
+  }
+}
+
+let _geoPeriod=30;
+
+async function loadGeo(d){
+  _geoPeriod=d;
+  [7,30,365].forEach(n=>{
+    const btn=document.getElementById("geo-btn-"+n);
+    if(!btn)return;
+    btn.style.color      =n===d?"var(--tab)":"var(--text3)";
+    btn.style.fontWeight =n===d?"700":"400";
+    btn.style.borderColor=n===d?"var(--tab)":"var(--border2)";
+  });
+  const el=document.getElementById("sta-geo");
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px">Lade&#8230;</div>';
+  try{
+    const token=localStorage.getItem("ut")||"";
+    const resp=await fetch("/api/admin/stats/geo?d="+d,{headers:{"X-Upload-Token":token}});
+    const data=await resp.json();
+    const laender=data.laender||[];
+    const staedte=data.staedte_de||[];
+    if(!laender.length){
+      el.innerHTML='<div style="font-size:13px;color:var(--text3);text-align:center;padding:12px 0">Noch keine Geo-Daten – erscheinen nach dem nächsten Cron-Lauf (00:05 Uhr)</div>';
+      return;
+    }
+    const maxL=laender[0]?.besucher||1;
+    const laenderHtml=laender.map(r=>`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="flex:1;min-width:0;font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.land)}</div>
+        <div style="width:110px;height:10px;background:var(--border);border-radius:5px;overflow:hidden;flex-shrink:0">
+          <div style="height:100%;width:${Math.round(r.besucher/maxL*100)}%;background:var(--tab);border-radius:5px"></div>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:var(--tab);width:24px;text-align:right;flex-shrink:0">${r.besucher}</div>
+      </div>`).join('');
+    let staedteHtml='';
+    if(staedte.length){
+      const maxS=staedte[0]?.besucher||1;
+      staedteHtml=`
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Deutschland – Städte</div>
+          ${staedte.map(r=>`
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <div style="flex:1;min-width:0;font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.stadt)}</div>
+              <div style="width:110px;height:10px;background:var(--border);border-radius:5px;overflow:hidden;flex-shrink:0">
+                <div style="height:100%;width:${Math.round(r.besucher/maxS*100)}%;background:#34c759;border-radius:5px"></div>
+              </div>
+              <div style="font-size:13px;font-weight:600;color:#34c759;width:24px;text-align:right;flex-shrink:0">${r.besucher}</div>
+            </div>`).join('')}
+        </div>`;
+    }
+    el.innerHTML=laenderHtml+staedteHtml;
+  }catch(e){
+    const el2=document.getElementById("sta-geo");
+    if(el2)el2.innerHTML='<div style="color:#ff3b30;text-align:center;font-size:12px">Fehler beim Laden</div>';
   }
 }
 

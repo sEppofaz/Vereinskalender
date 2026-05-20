@@ -161,6 +161,14 @@ def init_db():
                 views  INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (datum, stunde)
             );
+
+            CREATE TABLE IF NOT EXISTS page_stats_geo (
+                datum    TEXT    NOT NULL,
+                land     TEXT    NOT NULL,
+                stadt    TEXT    NOT NULL DEFAULT '',
+                besucher INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (datum, land, stadt)
+            );
         """)
         # Migrations: neue Spalten (scheitern lautlos wenn bereits vorhanden)
         for col_sql in [
