@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 import uuid as _uuid
 from datetime import datetime
 from pathlib import Path
@@ -159,13 +160,23 @@ Regeln:
             ]
 
         client  = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=256,
-            messages=[{"role": "user", "content": content}]
-        )
-
-        new_name = message.content[0].text.strip().strip('"').strip("'")
+        new_name = None
+        for attempt in range(1, 4):
+            try:
+                message = client.messages.create(
+                    model=MODEL,
+                    max_tokens=256,
+                    messages=[{"role": "user", "content": content}]
+                )
+                new_name = message.content[0].text.strip().strip('"').strip("'")
+                break
+            except anthropic.APIStatusError as e:
+                if e.status_code == 529 and attempt < 3:
+                    wait = attempt * 15
+                    log(f"⏳  API überlastet (Versuch {attempt}/3) – warte {wait}s ...")
+                    time.sleep(wait)
+                else:
+                    raise
 
         if not re.match(r"^\d{4}[-_]", new_name):
             log(f"⚠️  Ungültiger Name: {new_name!r} – übersprungen")
