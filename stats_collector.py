@@ -26,6 +26,24 @@ MMDB_PATH  = Path("/opt/rename-webhook/GeoLite2-City.mmdb")
 MONTHS_MAP = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
               "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
 
+# Substrings im User-Agent (lowercase) → Zeile wird als Crawler übersprungen
+CRAWLER_UA = {
+    "bot", "crawler", "spider", "slurp", "scraper",
+    "censys", "shodan", "masscan", "zgrab", "nmap",
+    "python-requests", "python-urllib", "curl/", "wget/", "axios",
+    "go-http-client", "java/", "okhttp", "httpx", "aiohttp",
+    "headlesschrome", "headless chrome", "headlessfirefox", "phantomjs",
+    "palo alto", "paloalto", "hello from",
+    "pingdom", "uptimerobot", "statuscake", "datadog-agent",
+    "facebookexternalhit", "yandex", "baiduspider", "duckduckbot",
+    "petalbot", "seznambot", "msnbot", "applebot",
+    "semrushbot", "ahrefsbot", "dotbot", "mj12bot", "blexbot",
+    "dataforseobot", "seokicks", "serpstatbot",
+    "gptbot", "claudebot", "anthropic-ai", "openai",
+    "netcraft", "internet-measurement", "netsystemsresearch",
+    "expanse", "intrinsec", "censysbot",
+}
+
 
 def _log_files(n: int) -> list[Path]:
     files = [NGINX_LOG] if NGINX_LOG.exists() else []
@@ -100,6 +118,11 @@ def collect_day(target: date, max_files: int = 60) -> tuple[int, int, dict[int, 
         for log_file in _log_files(max_files):
             for line in _read_lines(log_file):
                 if '"GET /kalender' not in line and '"GET / ' not in line:
+                    continue
+                # User-Agent extrahieren und Crawler filtern
+                parts = line.split('"')
+                ua = parts[-2].lower() if len(parts) >= 2 else ""
+                if any(kw in ua for kw in CRAWLER_UA):
                     continue
                 dt = _parse_dt(line)
                 if dt is None:
